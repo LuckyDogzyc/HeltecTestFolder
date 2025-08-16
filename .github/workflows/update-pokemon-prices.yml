@@ -1,0 +1,45 @@
+name: Update Pokémon Prices
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 每天 UTC 03:00 运行一次，可按需调整
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Download and merge Pokémon prices via JSON
+        run: |
+          python download_pokemon_tcgcsv_json.py \
+            --output pokemon_prices_full.csv \
+            --sleep 0.2
+
+      - name: Commit and push updated CSV
+        run: |
+          mkdir -p cards
+          mv pokemon_prices_full.csv cards/pokemon_cards.csv
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add cards/pokemon_cards.csv
+          if git diff --cached --quiet; then
+            echo "No changes detected."
+          else
+            git commit -m "Update Pokémon card prices via TCGCSV JSON"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
