@@ -1,5 +1,3 @@
----
-
 # Heltec Wireless Paper（ESP32-S3）宝可梦价格展示 + 左半屏显示图像
 
 本项目在 **Heltec Wireless Paper（ESP32-S3, 2.13" E-Ink）** 上展示宝可梦卡牌价格：
