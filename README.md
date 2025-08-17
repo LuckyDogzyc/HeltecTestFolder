@@ -1,179 +1,203 @@
-# Heltec Wireless Paper（ESP32-S3）宝可梦价格展示 + 左半屏显示图像
+# Wireless Paper 宝可梦价格追踪展示架
 
-本项目在 **Heltec Wireless Paper（ESP32-S3, 2.13" E-Ink）** 上展示宝可梦卡牌价格：
-右半屏显示卡牌名称、`marketPrice`（USD）和抓取时间；左半屏显示一张从 GitHub 下载的 **XBM 黑白图**。
-设备每次启动：连接 Wi-Fi → NTP 校时 → 下载左半图 → 逐行流式读取 CSV，匹配 `productId` → **全屏刷新** → 深度睡眠 24h。
-
-> 采用流式扫描 CSV，不把整文件读入内存，适合小内存/低功耗场景。
+给卡友的一个小工具：
+它每天抓一次**当天的宝可梦卡牌价格**，合并成一份统一的 `CSV`，任何人都能直接用。
+我的 **Wireless Paper（ESP32-S3 电子墨水屏）** 每 24 小时联网读这份 CSV，按 `productId` 显示卡名 + `marketPrice (USD)` + 抓取时间；左半屏还能放一张自己托管的黑白图（比如心爱的主站）。
 
 ---
 
-## 功能概览
+## 它每天都在做什么
 
-* **CSV 流式匹配**：逐行扫描 `cards/pokemon_cards.csv`，按 `productId`（CSV 第 1 列）匹配目标卡牌。
-* **左半屏图像**：从仓库的 `images/Greninja1/Greninja1.xbm` 下载 XBM，缩放至左半区域（约 125×122）。
-* **右半屏信息**：显示卡牌名、`marketPrice`（USD）与抓取时间。
-* **NTP 校时**：在 HTTPS 之前校时，减少 TLS 问题。
-* **每日刷新**：完成展示后深度睡眠 24 小时。
-* **镜像支持**：支持通过 `ghfast.top` 访问 GitHub Raw，方便中国大陆网络环境。
+* 每天定时抓取价格数据 → 清洗合并 → 更新仓库里的 **`cards/pokemon_cards.csv`**。
+* 设备上电：连 Wi-Fi → NTP 校时 → 下载左半图（XBM）→ 流式扫描 CSV（不整文件入内存）→ 显示目标 `productId` 的价格 → 深睡 24 小时。
+* 目标是“**省电、稳、少内存**”，适合做个不会吵人的价格小看板。
 
 ---
 
-## 仓库结构
+## 数据来源与格式
 
-```
-HeltecTestFolder/
-├─ cards/
-│  └─ pokemon_cards.csv                 # 价格 CSV（设备读取）
-├─ images/
-│  └─ Greninja1/
-│     └─ Greninja1.xbm                  # 左半屏 XBM 黑白图（设备读取）
-├─ arduino/
-│  └─ price_monitor_github_with_xbm_fix3/
-│     └─ price_monitor_github_with_xbm_fix3.ino   # 主程序（推荐版本）
-├─ scripts/
-│  └─ convert_to_xbm.py                 # 将彩色图转为 XBM 的脚本（本地使用）
-└─ README.md
-```
+**来源**
 
-> 屏幕特性：该 E-Ink 面板仅黑白（不支持灰阶）。旋转后可用像素区域约 **250×122**；本项目的左半区域默认 **125×122**。
+* 价格来自第三方聚合站点 **TCGCSV**（整合自 TCGplayer 等公开数据）。
+* 产品字典包含 `productId / setName / productName / rarity / subTypeName` 等字段，由你维护或据公开资料生成。
 
----
+> 说明：第三方数据可能不完整或会变动，仅用于学习与个人项目。
 
-## CSV 格式
-
-CSV 至少包含如下字段（顺序固定）：
+**最终标准 CSV**（设备与下游都读取这一份）
+路径：`cards/pokemon_cards.csv`
+字段顺序固定：
 
 ```
 productId,setName,productName,rarity,subTypeName,marketPrice,midPrice,lowPrice,highPrice
 644279,ME01: Mega Evolution,Mega Evolution Elite Trainer Box [Mega Gardevoir],,Normal,109.38,109.56,109.0,140.0
 ```
 
-* 程序匹配 **第 1 列 `productId`**（以字符串比较）。
-* 屏幕显示的价格来自 **第 6 列 `marketPrice`**，单位 `USD`。
+* 固件逐行扫描首列 **`productId`**（字符串匹配）。
+* 屏幕显示 **第 3 列 `productName`** 和 **第 6 列 `marketPrice`（USD）**。
 
 ---
 
-## 左半屏图像（XBM）
+## 想直接用我的 CSV？
 
-* 使用仓库内 `scripts/convert_to_xbm.py` 将彩色图转换为 1 位黑白的 XBM，目标尺寸建议 **125×122**（脚本默认会缩放）。
-* 转换后将 `.xbm` 放到 `images/Greninja1/Greninja1.xbm`（或按需更换路径与文件名）。
-* 如果图像出现全白/全黑或黑白反相，可在 `*.ino` 里调以下开关：
+没问题。
 
-  * `XBM_BIT_LSB_FIRST`（位序：LSB/MSB 在左）
-  * `XBM_BLACK_IS_ONE`（位=1 是否代表黑）
-  * `INVERT_OUTPUT`（输出整体反相）
+* Raw 地址：
 
----
+  ```
+  https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/refs/heads/main/cards/pokemon_cards.csv
+  ```
+* 如果直连不稳（大陆网络），可以用镜像：
 
-## 快速开始
-
-### 1) 准备 CSV 与 XBM
-
-* 确保 `cards/pokemon_cards.csv` 已更新并能通过浏览器 Raw 访问。
-* 用 `scripts/convert_to_xbm.py` 把图片转为 XBM，放到 `images/Greninja1/Greninja1.xbm`。
-
-  ```bash
-  python scripts/convert_to_xbm.py --input path/to/your_image.jpg --outbase images/Greninja1/Greninja1
+  ```
+  https://ghfast.top/https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/refs/heads/main/cards/pokemon_cards.csv
   ```
 
-  将生成：
+你可以把它导入表格、脚本或自己的显示设备里，按 `productId` 过滤即可。
 
-  * `images/Greninja1/Greninja1_bw.png`（预览）
-  * `images/Greninja1/Greninja1.xbm`（设备下载使用）
+---
 
-### 2) 打开 Arduino 工程并配置
+## 本地一键跑（想自己合并数据的卡友）
 
-* 用 Arduino IDE 打开：
-  `arduino/price_monitor_github_with_xbm_fix3/price_monitor_github_with_xbm_fix3.ino`
-* 板卡包：安装 **Heltec ESP32**，选择对应的 **Wireless Paper（ESP32-S3）** 板卡。
-* 安装依赖库：`heltec-eink-modules`、`WiFi`、`WiFiClientSecure`、`HTTPClient`（IDE 一般自带后两者）。
+脚本都在仓库里，按顺序执行即可。
 
-在 `*.ino` 顶部按你的环境修改常量（已替换为你的实际仓库路径）：
+**准备依赖（Windows PowerShell 示例）**
+
+```powershell
+python -m pip install -U requests pandas
+```
+
+**1) 下载当天价格（推荐 both 模式，提高兼容性）**
+
+```powershell
+python scripts\download_tcgcsv.py --out ".\data" --mode both --game pokemon
+```
+
+**2) 合并到标准 CSV**
+
+```powershell
+python scripts\merge_pokemon_prices.py ^
+  --products .\cards\Products.csv ^
+  --prices   ".\data\YYYY-MM-DD\<某个子目录>\price" ^
+  --output   .\cards\pokemon_cards.csv
+```
+
+小贴士：`--prices` 指向当日下载产物里的 `price` 文件（无扩展名）。`--output` 建议直接写到 `cards/pokemon_cards.csv`，设备和他人就能马上用。
+
+---
+
+## GitHub Actions：让它每天自动跑
+
+在仓库里放一份 `.github/workflows/daily-prices.yml`：
+
+```yaml
+name: daily-prices
+
+on:
+  schedule:
+    - cron: "5 0 * * *"   # 每天 00:05 UTC（可改）
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install -U requests pandas
+
+      - name: Download daily prices (TCGCSV)
+        run: |
+          python scripts/download_tcgcsv.py --out "./data" --mode both --game pokemon
+
+      - name: Merge Products + Prices -> cards/pokemon_cards.csv
+        run: |
+          python scripts/merge_pokemon_prices.py \
+            --products "./cards/Products.csv" \
+            --prices   "$(ls -d ./data/*/* | head -n 1)/price" \
+            --output   "./cards/pokemon_cards.csv"
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git add cards/pokemon_cards.csv
+            git commit -m "chore: daily prices $(date -u +'%Y-%m-%d')"
+            git push
+          else
+            echo "No changes."
+          fi
+```
+
+这样每天都会把最新价格写回仓库，设备与其他使用者都能直接读最新的 CSV。
+
+---
+
+## 设备部署（Wireless Paper / ESP32-S3）
+
+固件在：
+
+```
+arduino/price_monitor_github_with_xbm_fix3/price_monitor_github_with_xbm_fix3.ino
+```
+
+**它会做：**
+连 Wi-Fi → NTP → 下载左半图（XBM）→ 流式读取 `cards/pokemon_cards.csv` → 按 `productId` 显示卡名和 `marketPrice (USD)` → 深睡 24 小时。
+
+**我这边的默认设置：**
 
 ```cpp
-// Wi-Fi 和目标 productId
+// Wi-Fi & 目标卡（按需修改）
 static const char* WIFI_SSID     = "2604";
 static const char* WIFI_PASSWORD = "19980131";
 static const char* TARGET_PRODUCT = "562018";
 
-// CSV（使用 ghfast.top 代理的 GitHub Raw）
+// CSV（通过 ghfast 镜像访问 GitHub Raw）
 static const char* CSV_HOST = "ghfast.top";
 static const char* CSV_PATH = "/https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/refs/heads/main/cards/pokemon_cards.csv";
 
-// 左半图（XBM），同样通过 ghfast.top 代理访问
+// 左半黑白图（XBM）
 static const char* IMAGE_HOST = "ghfast.top";
 static const char* IMAGE_PATH = "/https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/refs/heads/main/images/Greninja1/Greninja1.xbm";
 ```
 
-> 也可尝试直连 GitHub Raw：
-> `CSV_HOST = "raw.githubusercontent.com"`
-> `CSV_PATH = "/LuckyDogzyc/HeltecTestFolder/main/cards/pokemon_cards.csv"`
-> `IMAGE_PATH = "/LuckyDogzyc/HeltecTestFolder/main/images/Greninja1/Greninja1.xbm"`
-> 若直连不稳定，请继续使用 `ghfast.top` 镜像方式。
+**编译环境要点：**
 
-### 3) 烧录与运行
+* Arduino IDE 2.x
+* 板卡：安装 **Heltec ESP32**，选择 Wireless Paper（ESP32-S3）对应板型
+* 库：`heltec-eink-modules`、`WiFi`、`WiFiClientSecure`、`HTTPClient`（后两者通常随核心）
+* 串口 115200 观察日志（NTP、IMG、HTTP、PARSE）
 
-* 连上串口监视器（115200），上电或复位。
-* 正常日志示例：
+**左半图（XBM）怎么来？**
+用 `scripts/convert_to_xbm.py` 把彩色图转为 **125×122** 的 1 位黑白 XBM，放到 `images/...` 并用 Raw 链接让设备下载。
+如果黑白倒置或纯白，代码里有三个开关可调：`INVERT_OUTPUT`、`XBM_BLACK_IS_ONE`、`XBM_BIT_LSB_FIRST`。
 
-  ```
-  [BOOT] price_monitor_github_with_xbm_fix3
-  [WiFi] ...
-  [NTP] synced: 2025-08-17 12:29
-  [IMG] begin: https://ghfast.top/https://raw.githubusercontent.com/.../images/Greninja1/Greninja1.xbm
-  [IMG] GET code = 200 ()
-  [IMG] parsed XBM: 125x122, bytes=1952
-  [CSV] try 1 ...
-  [HTTP] GET code = 200 ()
-  [PARSE] 562018 -> Greninja ex - 132, price=xx.xx
-  ```
-* 屏幕右半显示文字，左半显示图像。完成后设备进入 **深度睡眠 24 小时**。
+> 屏幕是黑白 E-Ink，不支持灰阶；旋转后可用区域约 250×122，项目里左半默认 125×122。
 
 ---
 
-## 常见问题
+## 常见问题（卡友实测小记）
 
-* **HTTP code = -1 / connection refused**
-
-  * 先看 `[NTP]` 是否成功（时间不同步可能影响 TLS）。
-  * Raw 路径/大小写是否正确；路径中是否包含多余的 `https://`。
-  * 直连不通时，维持 `ghfast.top` 镜像方式。
-
-* **左半图纯白/纯黑或反相**
-
-  * 依次尝试调整 `INVERT_OUTPUT`、`XBM_BLACK_IS_ONE`、`XBM_BIT_LSB_FIRST`。
-  * 观察串口的 `[IMG] parsed XBM: WxH, bytes=N`，确认字节数合理（`ceil(W/8)*H`）。
-
-* **找不到 productId**
-
-  * 确认 CSV 第一列确为 `productId`，且值与 `TARGET_PRODUCT` 完全一致。
-  * CSV 是否带 BOM/引号；代码已做裁剪和去引号处理，仍不行可贴日志排查。
-
-* **只想更新右半内容不刷新左半**
-
-  * 当前驱动不支持局部刷新；绘制会触发全屏刷新。
+* **HTTP -1 / 连接被拒**：先看 NTP 是否成功（TLS 依赖时间）；Raw 路径大小写要对；直连不稳就用 `ghfast.top`。
+* **找不到 `productId`**：确认在 `pokemon_cards.csv` 的第一列确实有对应 id，且没有多余空格/引号。
+* **左半纯白/反相**：切换上面提到的三个开关，很快能对上。
+* **只想右半变、左半不动**：这块屏不支持局部刷新，当前是全屏刷新策略。
 
 ---
 
 ## 许可证
 
-根据你的需求选择（例如 MIT / Apache-2.0）。当前示例代码未附带特定许可证，可自行添加。
+脚本与固件用于学习与个人项目；第三方数据按其平台条款。需要的话你可以在仓库里加上 MIT / Apache-2.0 等许可证文件。
 
 ---
 
-## 致谢
-
-* Heltec 开源库与硬件
-* 开源社区中关于 XBM/ESP32/HTTPS/NTP 的经验与示例
-
----
-
-### 最后检查清单
-
-* [ ] `WIFI_SSID` / `WIFI_PASSWORD` / `TARGET_PRODUCT` 已改为你的实际值
-* [ ] `cards/pokemon_cards.csv` 与 `images/Greninja1/Greninja1.xbm` 可以通过 Raw 链接访问
-* [ ] 串口能看到 `[IMG] parsed XBM: ...` 与 `[PARSE] ...`
-* [ ] 图像方向/黑白正常；若异常，按“常见问题”调整三个开关
-
----
+如果你也在做宝可梦的价格面板或展示台，欢迎提 PR 或开 Issue 交流思路。愿你不见颓高、不见男人！
