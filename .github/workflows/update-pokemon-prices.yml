@@ -41,12 +41,15 @@ jobs:
             --input cards/pokemon_cards.csv \
             --output-dir cards/product_id_buckets \
             --bucket-count 256
+          python generate_search_index.py \
+            --input cards/pokemon_cards.csv \
+            --output cards/search_index.min.json
 
       - name: Commit and push updated data files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add cards/pokemon_cards.csv cards/epaper_cards.json cards/product_id_buckets
+          git add cards/pokemon_cards.csv cards/epaper_cards.json cards/search_index.min.json cards/product_id_buckets
           if git diff --cached --quiet; then
             echo "No changes detected."
           else
