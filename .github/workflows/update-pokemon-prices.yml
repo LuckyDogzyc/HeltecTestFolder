@@ -28,13 +28,20 @@ jobs:
             --output pokemon_prices_full.csv \
             --sleep 0.2
 
-      - name: Commit and push updated CSV
+      - name: Generate ESP32 e-paper JSON feed
         run: |
           mkdir -p cards
           mv pokemon_prices_full.csv cards/pokemon_cards.csv
+          python generate_epaper_cards_json.py \
+            --input cards/pokemon_cards.csv \
+            --output cards/epaper_cards.json \
+            --limit 300
+
+      - name: Commit and push updated data files
+        run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add cards/pokemon_cards.csv
+          git add cards/pokemon_cards.csv cards/epaper_cards.json
           if git diff --cached --quiet; then
             echo "No changes detected."
           else

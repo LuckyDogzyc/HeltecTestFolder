@@ -209,8 +209,12 @@ def main() -> None:
     output_path = Path(args.output)
 
     session = requests.Session()
-    # Do not inherit proxies from the environment; user can configure proxies via requests if needed
+    # Do not inherit proxies from the environment; user can configure proxies via requests if needed.
+    # TCGCSV blocks generic/missing User-Agent values, including the default python-requests UA.
     session.trust_env = False
+    session.headers.update({
+        "User-Agent": "LuckyDog-ESP32-Epaper-PokemonPriceSync/1.0"
+    })
 
     try:
         groups = fetch_groups(3, session, args.sleep)
