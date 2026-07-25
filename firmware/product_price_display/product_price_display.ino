@@ -1,12 +1,15 @@
 /*
   ESP32-WROOM-32E-N16 + QYEG0213RYF661 三色墨水屏
-  Greninja ex 价格显示固件 MVP
+  Pokémon 卡牌价格显示固件 MVP
 
-  设计口径：
-  - GitHub 仓库继续保存全量卡牌 CSV/JSON 数据；
-  - GitHub Action 额外生成一个小型直取文件 cards/by_product_id/562018.json；
-  - ESP32 开机只下载这个约几百字节的 JSON，不扫描全量 CSV，缩短联网和解析时间；
-  - 不把价格硬编码到固件里，价格仍来自 GitHub 数据文件。
+  正确数据口径：
+  - GitHub Action 每天只运行一次，生成全量 cards/pokemon_cards.csv 和 cards/epaper_cards.json；
+  - 设备持有者后续通过 WebUI 搜索卡牌并保存 productId；
+  - ESP32 开机联网读取全量 CSV，按本机保存的 productId 流式查找对应行，找到后立即停止下载；
+  - 不为某一张卡生成固定单卡文件，不把价格硬编码到固件里。
+
+  说明：GitHub raw 是静态文件服务，不提供“按 id 查询”的服务端接口。
+  所以设备端的“搜索 id”实现为 HTTP 流式读取 CSV：不把 3.8MB 文件放进内存，匹配到 productId 就断开。
 
   Arduino IDE 设置：
   - Board: ESP32 Dev Module
@@ -17,7 +20,6 @@
   依赖库：
   - GxEPD2
   - Adafruit GFX Library
-  - ArduinoJson
 
   硬件引脚：
   - BUSY      -> GPIO25
@@ -33,22 +35,22 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <SPI.h>
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
-// ===== 用户只需要改这里 =====
+// ===== 用户/后续 WebUI 只需要改这里 =====
 const char* WIFI_SSID = "你的WiFi";
 const char* WIFI_PASS = "你的密码";
 
-// 小型直取 JSON：GitHub 仓库仍保留全量 cards/pokemon_cards.csv 和 cards/epaper_cards.json。
-static const char* CARD_JSON_URL =
-  "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/by_product_id/562018.json";
+// 首版默认值。后续 WebUI 搜索卡牌后，把选择结果保存到 NVS，再替换这个运行时值。
+static long SELECTED_PRODUCT_ID = 562018; // Greninja ex - 132, SV Promo
 
-static constexpr long TARGET_PRODUCT_ID = 562018; // Greninja ex - 132, SV Promo
+// GitHub 仓库里的全量卡牌 CSV；GitHub Action 每天更新一次。
+static const char* FULL_CSV_URL =
+  "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/pokemon_cards.csv";
 
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
@@ -76,17 +78,10 @@ struct CardPrice {
   String midPrice;
   String lowPrice;
   String highPrice;
-  String sourceUpdatedAt;
+  uint32_t scannedLines = 0;
 };
 
 static String lastError;
-
-static String priceToString(JsonVariant value) {
-  if (value.isNull()) return "--";
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%.2f", value.as<float>());
-  return String(buf);
-}
 
 static float readBatteryVoltage() {
   pinMode(PIN_BAT_ADC, INPUT);
@@ -132,7 +127,40 @@ static void connectWiFi() {
   }
 }
 
-static bool fetchGreninjaDirectJson(CardPrice& card) {
+static bool parseCsvLine(const String& line, String fields[], const int maxFields) {
+  int fieldIndex = 0;
+  String current;
+  bool inQuotes = false;
+
+  for (uint32_t i = 0; i < line.length(); ++i) {
+    char c = line[i];
+    if (c == '"') {
+      if (inQuotes && i + 1 < line.length() && line[i + 1] == '"') {
+        current += '"';
+        ++i;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (c == ',' && !inQuotes) {
+      if (fieldIndex < maxFields) fields[fieldIndex] = current;
+      ++fieldIndex;
+      current = "";
+    } else if (c != '\r') {
+      current += c;
+    }
+  }
+
+  if (fieldIndex < maxFields) fields[fieldIndex] = current;
+  ++fieldIndex;
+  return fieldIndex >= maxFields;
+}
+
+static bool csvLineMatchesSelectedId(const String& line) {
+  String prefix = String(SELECTED_PRODUCT_ID) + ",";
+  return line.startsWith(prefix);
+}
+
+static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
   if (WiFi.status() != WL_CONNECTED) {
     lastError = "No WiFi";
     return false;
@@ -144,61 +172,88 @@ static bool fetchGreninjaDirectJson(CardPrice& card) {
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setConnectTimeout(8000);
-  http.setTimeout(12000);
+  http.setTimeout(45000);
+  http.useHTTP10(true); // 读取流更稳定，避免 chunked 处理差异。
 
-  Serial.printf("Fetching card JSON: %s\n", CARD_JSON_URL);
+  Serial.printf("Fetching full CSV and searching productId=%ld\n", SELECTED_PRODUCT_ID);
   const uint32_t start = millis();
-  if (!http.begin(client, CARD_JSON_URL)) {
+  if (!http.begin(client, FULL_CSV_URL)) {
     lastError = "HTTP begin failed";
     return false;
   }
-  http.addHeader("User-Agent", "LuckyDog-ESP32-Greninja-Epaper/1.1");
+  http.addHeader("User-Agent", "LuckyDog-ESP32-ProductPriceDisplay/1.0");
 
   const int code = http.GET();
-  const int size = http.getSize();
-  Serial.printf("HTTP status=%d size=%d elapsed=%lums\n", code, size, (unsigned long)(millis() - start));
+  Serial.printf("HTTP status=%d size=%d\n", code, http.getSize());
   if (code != HTTP_CODE_OK) {
     lastError = String("HTTP ") + code;
     http.end();
     return false;
   }
 
-  String payload = http.getString();
+  WiFiClient* stream = http.getStreamPtr();
+  bool headerSkipped = false;
+  uint32_t lines = 0;
+
+  while (http.connected() || stream->available()) {
+    if (!stream->available()) {
+      delay(5);
+      if (millis() - start > 60000) {
+        lastError = "CSV read timeout";
+        http.end();
+        return false;
+      }
+      continue;
+    }
+
+    String line = stream->readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+
+    if (!headerSkipped) {
+      headerSkipped = true;
+      Serial.printf("CSV header ok\n");
+      continue;
+    }
+
+    ++lines;
+    if (!csvLineMatchesSelectedId(line)) {
+      continue;
+    }
+
+    String f[9];
+    if (!parseCsvLine(line, f, 9)) {
+      lastError = "CSV parse failed";
+      http.end();
+      return false;
+    }
+
+    card.found = true;
+    card.productId = f[0].toInt();
+    card.setName = f[1];
+    card.productName = f[2];
+    card.rarity = f[3];
+    card.subTypeName = f[4];
+    card.marketPrice = f[5].length() ? f[5] : "--";
+    card.midPrice = f[6].length() ? f[6] : "--";
+    card.lowPrice = f[7].length() ? f[7] : "--";
+    card.highPrice = f[8].length() ? f[8] : "--";
+    card.scannedLines = lines;
+
+    Serial.printf("Found productId=%ld after %lu lines in %lums: %s market=%s\n",
+                  card.productId,
+                  (unsigned long)lines,
+                  (unsigned long)(millis() - start),
+                  card.productName.c_str(),
+                  card.marketPrice.c_str());
+    http.end();
+    return true;
+  }
+
+  lastError = "ProductId not found";
+  Serial.printf("Not found after %lu lines, elapsed=%lums\n", (unsigned long)lines, (unsigned long)(millis() - start));
   http.end();
-  Serial.printf("Downloaded %u bytes\n", payload.length());
-
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, payload);
-  if (err) {
-    lastError = String("JSON ") + err.c_str();
-    Serial.println(lastError);
-    return false;
-  }
-
-  if (!doc["found"].as<bool>() || doc["productId"].as<long>() != TARGET_PRODUCT_ID) {
-    lastError = "Card not found";
-    return false;
-  }
-
-  JsonObject c = doc["card"].as<JsonObject>();
-  card.found = true;
-  card.productId = c["id"].as<long>();
-  card.setName = c["set"] | "";
-  card.productName = c["name"] | "";
-  card.rarity = c["rarity"] | "";
-  card.subTypeName = c["type"] | "";
-  card.marketPrice = priceToString(c["market"]);
-  card.midPrice = priceToString(c["mid"]);
-  card.lowPrice = priceToString(c["low"]);
-  card.highPrice = priceToString(c["high"]);
-  card.sourceUpdatedAt = doc["sourceUpdatedAt"] | "";
-
-  Serial.printf("Card ready: %s market=%s low=%s high=%s\n",
-                card.productName.c_str(),
-                card.marketPrice.c_str(),
-                card.lowPrice.c_str(),
-                card.highPrice.c_str());
-  return true;
+  return false;
 }
 
 static void drawCenteredText(const String& text, int16_t y, const GFXfont* font, uint16_t color) {
@@ -210,6 +265,16 @@ static void drawCenteredText(const String& text, int16_t y, const GFXfont* font,
   int16_t x = max(0, (display.width() - (int16_t)w) / 2);
   display.setCursor(x, y);
   display.print(text);
+}
+
+static String displayTitle(const CardPrice& card) {
+  if (card.productName.indexOf("Greninja") >= 0) return "GRENINJA EX";
+  String t = card.productName;
+  int dash = t.indexOf(" - ");
+  if (dash > 0) t = t.substring(0, dash);
+  t.toUpperCase();
+  if (t.length() > 18) t = t.substring(0, 18);
+  return t;
 }
 
 static void drawScreen(const CardPrice& card, float batV) {
@@ -224,16 +289,21 @@ static void drawScreen(const CardPrice& card, float batV) {
     display.fillScreen(GxEPD_WHITE);
 
     if (card.found) {
-      drawCenteredText("GRENINJA EX", 18, &FreeMonoBold12pt7b, GxEPD_RED);
+      drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
 
       display.setFont(&FreeSans9pt7b);
       display.setTextColor(GxEPD_BLACK);
       display.setCursor(8, 42);
-      display.print("SV Promo #132");
+      if (card.productId == 562018) {
+        display.print("SV Promo #132");
+      } else {
+        display.print("ID ");
+        display.print(card.productId);
+      }
       display.setCursor(8, 61);
-      display.print(card.rarity);
+      display.print(card.rarity.length() ? card.rarity : "Card");
       display.print(" / ");
-      display.print(card.subTypeName);
+      display.print(card.subTypeName.length() ? card.subTypeName : "Price");
 
       display.setFont(&FreeMonoBold12pt7b);
       display.setTextColor(GxEPD_BLACK);
@@ -257,7 +327,9 @@ static void drawScreen(const CardPrice& card, float batV) {
       display.setCursor(8, 65);
       display.print(lastError.substring(0, 28));
       display.setCursor(8, 95);
-      display.print("Battery ");
+      display.print("ID ");
+      display.print(SELECTED_PRODUCT_ID);
+      display.print(" B ");
       display.print(batV, 2);
       display.print("V");
     }
@@ -271,7 +343,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println();
-  Serial.println("Greninja price display: GitHub tiny product JSON -> e-paper");
+  Serial.println("Product price display: configured productId -> GitHub full CSV stream search -> e-paper");
 
   const uint32_t bootStart = millis();
   const float batV = readBatteryVoltage();
@@ -279,7 +351,7 @@ void setup() {
 
   CardPrice card;
   if (WiFi.status() == WL_CONNECTED) {
-    fetchGreninjaDirectJson(card);
+    fetchSelectedCardFromFullCsv(card);
   }
 
   WiFi.disconnect(true);
