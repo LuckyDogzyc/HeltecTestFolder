@@ -180,12 +180,40 @@ def generate(
     return payload
 
 
+def write_single_card_file(full_payload: Dict[str, Any], product_id: str, output_path: Path) -> Dict[str, Any]:
+    """Write one tiny direct-fetch JSON for latency-sensitive ESP32 firmware.
+
+    The repository still keeps the full CSV/full JSON. This file is only an
+    optimized lookup artifact so the device can fetch one URL and avoid scanning
+    multi-MB data on boot.
+    """
+    target = int(product_id) if product_id.isdigit() else product_id
+    matches = [card for card in full_payload["cards"] if card.get("id") == target]
+    payload: Dict[str, Any] = {
+        "schemaVersion": full_payload["schemaVersion"],
+        "source": full_payload["source"],
+        "sourceUpdatedAt": full_payload.get("sourceUpdatedAt"),
+        "generatedAt": full_payload.get("generatedAt"),
+        "productId": target,
+        "found": bool(matches),
+        "card": matches[0] if matches else None,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return payload
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate ESP32/e-paper JSON from Pokémon price CSV")
     parser.add_argument("--input", required=True, help="Input full CSV path")
     parser.add_argument("--output", required=True, help="Output JSON path")
     parser.add_argument("--limit", type=int, default=300, help="Maximum cards to include (default: 300)")
     parser.add_argument("--product-id", help="Only include this TCGplayer productId, useful for a single-card MVP")
+    parser.add_argument("--single-card-product-id", help="Also write one tiny direct-fetch JSON for this productId")
+    parser.add_argument("--single-card-output", help="Output path for --single-card-product-id JSON")
     parser.add_argument(
         "--include-missing-price",
         action="store_true",
@@ -204,6 +232,18 @@ def main() -> None:
         f"Wrote {args.output}: {payload['cardsIncluded']} cards from {payload['totalRows']} rows; "
         f"sourceUpdatedAt={payload['sourceUpdatedAt']}"
     )
+    if args.single_card_product_id:
+        if not args.single_card_output:
+            parser.error("--single-card-output is required with --single-card-product-id")
+        single_payload = write_single_card_file(
+            payload,
+            product_id=args.single_card_product_id,
+            output_path=Path(args.single_card_output),
+        )
+        print(
+            f"Wrote {args.single_card_output}: productId={single_payload['productId']} "
+            f"found={single_payload['found']}"
+        )
 
 
 if __name__ == "__main__":
