@@ -35,8 +35,8 @@ jobs:
           python generate_epaper_cards_json.py \
             --input cards/pokemon_cards.csv \
             --output cards/epaper_cards.json \
-            --limit 1 \
-            --product-id 562018
+            --limit 50000 \
+            --include-missing-price
 
       - name: Commit and push updated data files
         run: |
