@@ -42,12 +42,7 @@
 const char* WIFI_SSID = "你的WiFi";
 const char* WIFI_PASS = "你的密码";
 
-// 如果仓库保持 Private，ESP32 访问 raw.githubusercontent.com 会 404。
-// 方案一：把数据仓库或 cards 文件发布为 Public / GitHub Pages；
-// 方案二：这里填一个只读 fine-grained token。注意：写进固件的 token 不适合量产外发。
-const char* GITHUB_TOKEN = "";
-
-// GitHub 仓库里的全量卡牌 CSV，不是单卡文件。
+// GitHub 仓库里的全量卡牌 CSV，不是单卡文件。仓库已设为 Public，ESP32 可直接读取 raw 文件。
 static const char* FULL_CSV_URL =
   "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/pokemon_cards.csv";
 
@@ -173,10 +168,6 @@ static bool fetchGreninjaFromFullCsv(CardPrice& card) {
     return false;
   }
   http.addHeader("User-Agent", "LuckyDog-ESP32-Greninja-Epaper/1.0");
-  if (strlen(GITHUB_TOKEN) > 0) {
-    http.addHeader("Authorization", String("Bearer ") + GITHUB_TOKEN);
-    http.addHeader("Accept", "text/plain");
-  }
 
   const int code = http.GET();
   Serial.printf("HTTP status=%d size=%d\n", code, http.getSize());
