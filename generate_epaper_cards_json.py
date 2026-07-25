@@ -103,7 +103,12 @@ def row_to_card(row: Dict[str, str]) -> Dict[str, Any]:
     return card
 
 
-def select_cards(rows: Iterable[Dict[str, str]], limit: int, require_market_price: bool) -> tuple[List[Dict[str, Any]], int, int]:
+def select_cards(
+    rows: Iterable[Dict[str, str]],
+    limit: int,
+    require_market_price: bool,
+    product_id: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], int, int]:
     selected: List[Dict[str, Any]] = []
     total_rows = 0
     skipped_missing_price_before_limit = 0
@@ -111,6 +116,9 @@ def select_cards(rows: Iterable[Dict[str, str]], limit: int, require_market_pric
 
     for row in rows:
         total_rows += 1
+        if product_id is not None and row.get("productId") != product_id:
+            continue
+
         market = parse_price(row.get("marketPrice", ""))
 
         # Keep reading after the display feed is full so totalRows describes the
@@ -136,10 +144,16 @@ def select_cards(rows: Iterable[Dict[str, str]], limit: int, require_market_pric
     return selected, total_rows, skipped_missing_price_before_limit
 
 
-def generate(input_path: Path, output_path: Path, limit: int, require_market_price: bool) -> Dict[str, Any]:
+def generate(
+    input_path: Path,
+    output_path: Path,
+    limit: int,
+    require_market_price: bool,
+    product_id: Optional[str] = None,
+) -> Dict[str, Any]:
     with input_path.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        cards, total_rows, skipped_missing_price = select_cards(reader, limit, require_market_price)
+        cards, total_rows, skipped_missing_price = select_cards(reader, limit, require_market_price, product_id)
 
     payload: Dict[str, Any] = {
         "schemaVersion": 1,
@@ -150,8 +164,9 @@ def generate(input_path: Path, output_path: Path, limit: int, require_market_pri
         "cardsIncluded": len(cards),
         "selection": {
             "limit": limit,
+            "productId": int(product_id) if product_id and product_id.isdigit() else product_id,
             "requireMarketPrice": require_market_price,
-            "order": "csv_order_newest_groups_first",
+            "order": "exact_product_id" if product_id else "csv_order_newest_groups_first",
             "skippedMissingPriceBeforeLimit": skipped_missing_price,
         },
         "cards": cards,
@@ -170,6 +185,7 @@ def main() -> None:
     parser.add_argument("--input", required=True, help="Input full CSV path")
     parser.add_argument("--output", required=True, help="Output JSON path")
     parser.add_argument("--limit", type=int, default=300, help="Maximum cards to include (default: 300)")
+    parser.add_argument("--product-id", help="Only include this TCGplayer productId, useful for a single-card MVP")
     parser.add_argument(
         "--include-missing-price",
         action="store_true",
@@ -182,6 +198,7 @@ def main() -> None:
         output_path=Path(args.output),
         limit=args.limit,
         require_market_price=not args.include_missing_price,
+        product_id=args.product_id,
     )
     print(
         f"Wrote {args.output}: {payload['cardsIncluded']} cards from {payload['totalRows']} rows; "
