@@ -37,12 +37,16 @@ jobs:
             --output cards/epaper_cards.json \
             --limit 50000 \
             --include-missing-price
+          python generate_product_id_buckets.py \
+            --input cards/pokemon_cards.csv \
+            --output-dir cards/product_id_buckets \
+            --bucket-count 256
 
       - name: Commit and push updated data files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add cards/pokemon_cards.csv cards/epaper_cards.json
+          git add cards/pokemon_cards.csv cards/epaper_cards.json cards/product_id_buckets
           if git diff --cached --quiet; then
             echo "No changes detected."
           else

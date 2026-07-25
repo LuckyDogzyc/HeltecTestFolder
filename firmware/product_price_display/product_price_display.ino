@@ -2,14 +2,15 @@
   ESP32-WROOM-32E-N16 + QYEG0213RYF661 三色墨水屏
   Pokémon 卡牌价格显示固件 MVP
 
-  正确数据口径：
-  - GitHub Action 每天只运行一次，生成全量 cards/pokemon_cards.csv 和 cards/epaper_cards.json；
+  数据口径：
+  - GitHub Action 每天只运行一次，生成全量 cards/pokemon_cards.csv / cards/epaper_cards.json；
+  - 同一次 Action 额外生成“全量静态索引” cards/product_id_buckets/*.csv，不针对某一张卡；
   - 设备持有者后续通过 WebUI 搜索卡牌并保存 productId；
-  - ESP32 开机联网读取全量 CSV，按本机保存的 productId 流式查找对应行，找到后立即停止下载；
-  - 不为某一张卡生成固定单卡文件，不把价格硬编码到固件里。
+  - ESP32 开机按 productId % 256 计算桶文件，只下载对应小 CSV 桶，查到该 id 后刷新墨水屏。
 
-  说明：GitHub raw 是静态文件服务，不提供“按 id 查询”的服务端接口。
-  所以设备端的“搜索 id”实现为 HTTP 流式读取 CSV：不把 3.8MB 文件放进内存，匹配到 productId 就断开。
+  说明：GitHub raw 是静态文件服务，不能直接跑 SQL。
+  如需真正 SQL：要加 Cloudflare Worker/D1、Supabase、API Server 等后端。
+  这里用静态分桶索引模拟“按 id 查询”，避免 ESP32 扫描 3.8MB 全量 CSV。
 
   Arduino IDE 设置：
   - Board: ESP32 Dev Module
@@ -48,9 +49,9 @@ const char* WIFI_PASS = "你的密码";
 // 首版默认值。后续 WebUI 搜索卡牌后，把选择结果保存到 NVS，再替换这个运行时值。
 static long SELECTED_PRODUCT_ID = 562018; // Greninja ex - 132, SV Promo
 
-// GitHub 仓库里的全量卡牌 CSV；GitHub Action 每天更新一次。
-static const char* FULL_CSV_URL =
-  "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/pokemon_cards.csv";
+static constexpr int PRODUCT_BUCKET_COUNT = 256;
+static const char* PRODUCT_BUCKET_BASE_URL =
+  "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/product_id_buckets/";
 
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
@@ -79,6 +80,7 @@ struct CardPrice {
   String lowPrice;
   String highPrice;
   uint32_t scannedLines = 0;
+  int bucket = -1;
 };
 
 static String lastError;
@@ -155,12 +157,24 @@ static bool parseCsvLine(const String& line, String fields[], const int maxField
   return fieldIndex >= maxFields;
 }
 
+static int selectedBucket() {
+  long value = SELECTED_PRODUCT_ID % PRODUCT_BUCKET_COUNT;
+  if (value < 0) value += PRODUCT_BUCKET_COUNT;
+  return (int)value;
+}
+
+static String selectedBucketUrl() {
+  char filename[16];
+  snprintf(filename, sizeof(filename), "%03d.csv", selectedBucket());
+  return String(PRODUCT_BUCKET_BASE_URL) + filename;
+}
+
 static bool csvLineMatchesSelectedId(const String& line) {
   String prefix = String(SELECTED_PRODUCT_ID) + ",";
   return line.startsWith(prefix);
 }
 
-static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
+static bool fetchSelectedCardFromBucket(CardPrice& card) {
   if (WiFi.status() != WL_CONNECTED) {
     lastError = "No WiFi";
     return false;
@@ -172,16 +186,18 @@ static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setConnectTimeout(8000);
-  http.setTimeout(45000);
-  http.useHTTP10(true); // 读取流更稳定，避免 chunked 处理差异。
+  http.setTimeout(15000);
+  http.useHTTP10(true);
 
-  Serial.printf("Fetching full CSV and searching productId=%ld\n", SELECTED_PRODUCT_ID);
+  const int bucket = selectedBucket();
+  const String url = selectedBucketUrl();
+  Serial.printf("Fetching bucket=%03d for productId=%ld: %s\n", bucket, SELECTED_PRODUCT_ID, url.c_str());
   const uint32_t start = millis();
-  if (!http.begin(client, FULL_CSV_URL)) {
+  if (!http.begin(client, url)) {
     lastError = "HTTP begin failed";
     return false;
   }
-  http.addHeader("User-Agent", "LuckyDog-ESP32-ProductPriceDisplay/1.0");
+  http.addHeader("User-Agent", "LuckyDog-ESP32-ProductPriceDisplay/1.1");
 
   const int code = http.GET();
   Serial.printf("HTTP status=%d size=%d\n", code, http.getSize());
@@ -197,9 +213,9 @@ static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
 
   while (http.connected() || stream->available()) {
     if (!stream->available()) {
-      delay(5);
-      if (millis() - start > 60000) {
-        lastError = "CSV read timeout";
+      delay(2);
+      if (millis() - start > 20000) {
+        lastError = "Bucket read timeout";
         http.end();
         return false;
       }
@@ -212,7 +228,6 @@ static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
 
     if (!headerSkipped) {
       headerSkipped = true;
-      Serial.printf("CSV header ok\n");
       continue;
     }
 
@@ -239,9 +254,11 @@ static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
     card.lowPrice = f[7].length() ? f[7] : "--";
     card.highPrice = f[8].length() ? f[8] : "--";
     card.scannedLines = lines;
+    card.bucket = bucket;
 
-    Serial.printf("Found productId=%ld after %lu lines in %lums: %s market=%s\n",
+    Serial.printf("Found productId=%ld in bucket=%03d after %lu bucket lines in %lums: %s market=%s\n",
                   card.productId,
+                  bucket,
                   (unsigned long)lines,
                   (unsigned long)(millis() - start),
                   card.productName.c_str(),
@@ -250,8 +267,11 @@ static bool fetchSelectedCardFromFullCsv(CardPrice& card) {
     return true;
   }
 
-  lastError = "ProductId not found";
-  Serial.printf("Not found after %lu lines, elapsed=%lums\n", (unsigned long)lines, (unsigned long)(millis() - start));
+  lastError = "ProductId not in bucket";
+  Serial.printf("Not found in bucket=%03d after %lu lines, elapsed=%lums\n",
+                bucket,
+                (unsigned long)lines,
+                (unsigned long)(millis() - start));
   http.end();
   return false;
 }
@@ -343,7 +363,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println();
-  Serial.println("Product price display: configured productId -> GitHub full CSV stream search -> e-paper");
+  Serial.println("Product price display: configured productId -> GitHub productId bucket -> e-paper");
 
   const uint32_t bootStart = millis();
   const float batV = readBatteryVoltage();
@@ -351,7 +371,7 @@ void setup() {
 
   CardPrice card;
   if (WiFi.status() == WL_CONNECTED) {
-    fetchSelectedCardFromFullCsv(card);
+    fetchSelectedCardFromBucket(card);
   }
 
   WiFi.disconnect(true);
