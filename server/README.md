@@ -23,7 +23,7 @@ npm run dev
 打开：
 
 ```text
-http://localhost:3200
+http://localhost:2300
 ```
 
 生产构建验证：
@@ -47,7 +47,7 @@ GET  /api/cards/search?q=greninja
 设备注册示例：
 
 ```bash
-curl -X POST http://localhost:3200/api/devices \
+curl -X POST http://localhost:2300/api/devices \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer demo-device-key' \
   -d '{"deviceId":"esp32-5628","factoryName":"PokemonDisplay-5628","lanIp":"192.168.31.218","firmware":"0.1.0"}'

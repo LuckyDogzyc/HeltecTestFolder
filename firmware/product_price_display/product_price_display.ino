@@ -58,9 +58,9 @@ static const char* PRODUCT_BUCKET_BASE_URL =
 static const char* SEARCH_INDEX_URL =
   "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/search_index.min.json";
 
-// 公网/远程 Server WebUI。默认留空，先通过本地 WebUI API 设置到 NVS。
-// 例如：http://your-server:3200；正式产品可改成 HTTPS 域名。
-static const char* DEFAULT_SERVER_BASE_URL = "";
+// 公网/远程 Server WebUI。当前测试服务器：43.162.99.23:2300。
+// 正式产品后续可改成 HTTPS 域名。
+static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
 
 static constexpr int PIN_BAT_ADC = 34;
