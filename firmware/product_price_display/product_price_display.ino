@@ -534,7 +534,10 @@ static String layoutValue(int index, const CardPrice& card) {
   if (index == 4) return String("M $") + card.midPrice;
   if (index == 5) return String("H $") + card.highPrice;
   if (index == 6) return String("ID ") + card.productId;
-  if (index == 7) return powerLabel();
+  if (index == 7) {
+    if (!powerState.batteryValid) return "USB";
+    return String("B ") + String(powerState.voltage, 2) + "V";
+  }
   return "";
 }
 
@@ -683,7 +686,7 @@ async function refreshScreen(){setMsg('刷新中，请等待墨水屏完成刷�
 async function saveProduct(doRefresh){const id=parseInt($('pid').value,10);if(!id)return setMsg('请输入有效 productId','bad');try{await api('/api/card',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'productId='+encodeURIComponent(id)});setMsg('productId 已保存'+(doRefresh?'，开始刷新':''),'ok'); if(doRefresh) await refreshScreen(); else await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
 async function saveConfig(){const body=`template=${$('tpl').value}&showBattery=${$('showBat').checked?'1':'0'}`;try{await api('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});setMsg('显示设置已保存','ok');await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
 function renderLayoutEditor(items){$('layoutEditor').innerHTML=items.map(it=>`<div class="result"><b>${it.label}</b> <span class="muted">${it.field}</span><div class="row"><label><input id="lv${it.i}" type="checkbox" ${it.v?'checked':''}>显示</label><input id="lx${it.i}" type="number" min="0" max="249" value="${it.x}" placeholder="x"><input id="ly${it.i}" type="number" min="0" max="121" value="${it.y}" placeholder="y"><select id="lf${it.i}"><option value="0">小号</option><option value="1">粗体9</option><option value="2">标题12</option></select><select id="lc${it.i}"><option value="0">黑色</option><option value="1">红色</option></select></div></div>`).join('');items.forEach(it=>{const f=$('lf'+it.i),c=$('lc'+it.i);if(f)f.value=it.f;if(c)c.value=it.c;});}
-async function saveLayout(doRefresh){const items=(statusData&&statusData.layout&&statusData.layout.items)||[];let body=items.map(it=>`v${it.i}=${$('lv'+it.i).checked?'1':'0'}&x${it.i}=${$('lx'+it.i).value}&y${it.i}=${$('ly'+it.i).value}&f${it.i}=${$('lf'+it.i).value}&c${it.i}=${$('lc'+it.i).value}`).join('&');$('layoutResult').textContent='保存中...';try{await api('/api/layout',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});$('layoutResult').className='ok';$('layoutResult').textContent='布局已保存';await loadStatus();if(doRefresh)await refreshScreen();}catch(e){$('layoutResult').className='bad';$('layoutResult').textContent='保存失败：'+e.message;}}
+async function saveLayout(doRefresh){const items=(statusData&&statusData.layout&&statusData.layout.items)||[];let body=items.map(it=>`v${it.i}=${$('lv'+it.i).checked?'1':'0'}&x${it.i}=${$('lx'+it.i).value}&y${it.i}=${$('ly'+it.i).value}&f${it.i}=${$('lf'+it.i).value}&c${it.i}=${$('lc'+it.i).value}`).join('&');$('layoutResult').textContent='保存中...';try{await api('/api/layout',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});$('tpl').value='3';$('layoutResult').className='ok';$('layoutResult').textContent='布局已保存，并已自动切换为自定义布局模板';await loadStatus();if(doRefresh)await refreshScreen();}catch(e){$('layoutResult').className='bad';$('layoutResult').textContent='保存失败：'+e.message;}}
 async function clearWifi(){if(!confirm('确认清除 Wi-Fi 设置？设备会开启 PokemonDisplay 热点用于重新配网。'))return;try{const j=await api('/api/wifi/clear',{method:'POST'});$('advancedResult').className='ok';$('advancedResult').textContent=j.message+' 请连接 PokemonDisplay 热点并打开 http://192.168.4.1';await loadStatus();}catch(e){$('advancedResult').className='bad';$('advancedResult').textContent=e.message;}}
 function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();} function lev(a,b,max=2){if(Math.abs(a.length-b.length)>max)return max+1;let prev=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let cur=[i],best=i;for(let j=1;j<=b.length;j++){let v=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));cur[j]=v;if(v<best)best=v;}if(best>max)return max+1;prev=cur;}return prev[b.length];}
 function score(c,q){if(!q)return 0;const nq=norm(q),terms=nq.split(/\s+/).filter(Boolean),hay=c.q||norm(`${c.id} ${c.n} ${c.s} ${c.r} ${c.t} ${c.num}`);if(String(c.id)===nq)return 2000;let sc=0;if(norm(c.n).includes(nq))sc+=1000;if(hay.includes(nq))sc+=700;let all=true;for(const t of terms){if(hay.includes(t))sc+=120;else all=false;}if(all&&terms.length>1)sc+=500;if(c.num&&norm(c.num)===nq)sc+=900;for(const word of hay.split(' ')){for(const t of terms){if(t.length>=4&&lev(t,word,2)<=1)sc+=60;}}return sc;}
@@ -760,7 +763,9 @@ static void setupRoutes() {
       customLayout[i].color = (uint8_t)constrain(server.arg(String("c") + i).toInt(), 0, 1);
     }
     saveLayoutConfig();
-    sendJson(200, "{\"ok\":true}");
+    selectedTemplate = 3;
+    saveDisplayConfig();
+    sendJson(200, "{\"ok\":true,\"template\":3}");
   });
   server.on("/api/refresh", HTTP_POST, []() {
     bool ok = refreshCardAndScreen(true);
