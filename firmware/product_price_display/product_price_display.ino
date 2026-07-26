@@ -536,12 +536,11 @@ static void drawCenteredText(const String& text, int16_t y, const GFXfont* font,
 }
 
 static String displayTitle(const CardPrice& card) {
-  if (card.productName.indexOf("Greninja") >= 0) return "GRENINJA EX";
   String t = card.productName;
   int dash = t.indexOf(" - ");
   if (dash > 0) t = t.substring(0, dash);
+  t.trim();
   t.toUpperCase();
-  if (t.length() > 18) t = t.substring(0, 18);
   return t;
 }
 
@@ -650,6 +649,33 @@ static String renderFieldValue(const CardPrice& card, const String& key) {
   return "";
 }
 
+static String compactDisplayText(String value) {
+  value.replace("Double Rare", "Dbl Rare");
+  value.replace("Ultra Rare", "Ultra");
+  value.replace("Illustration Rare", "Illus Rare");
+  value.replace("Special Illustration Rare", "SIR");
+  value.replace("Hyper Rare", "Hyper");
+  value.replace("Holofoil", "Holo");
+  value.replace("Reverse Holofoil", "Rev Holo");
+  value.replace(" / ", "/");
+  return value;
+}
+
+static uint8_t approxCharWidth(uint8_t font) {
+  if (font == 2) return 14;
+  if (font == 1) return 11;
+  return 8;
+}
+
+static String fitTextToSlot(String value, uint8_t font, uint8_t x) {
+  value = compactDisplayText(value);
+  uint8_t cw = approxCharWidth(font);
+  int maxChars = (250 - x) / cw;
+  if (maxChars < 4) maxChars = 4;
+  if ((int)value.length() > maxChars) value = value.substring(0, maxChars);
+  return value;
+}
+
 static String applyRenderPlaceholders(String value, const CardPrice& card) {
   const char* keys[] = {"title", "name", "set", "rarity", "subType", "productId", "market", "low", "mid", "high", "power"};
   for (uint8_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
@@ -658,7 +684,6 @@ static String applyRenderPlaceholders(String value, const CardPrice& card) {
     value.replace(String("{") + k + "}", v);
     value.replace(String("${") + k + "}", String("$") + v);
   }
-  if (value.length() > 34) value = value.substring(0, 34);
   return value;
 }
 
@@ -666,7 +691,7 @@ static void drawRenderProgram(const CardPrice& card) {
   for (int i = 0; i < renderProgramCount; ++i) {
     const RenderCommand& item = renderProgram[i];
     if (!item.visible || !item.value.length()) continue;
-    String value = applyRenderPlaceholders(item.value, card);
+    String value = fitTextToSlot(applyRenderPlaceholders(item.value, card), item.font, item.x);
     if (!value.length()) continue;
     display.setFont(layoutFont(item.font));
     display.setTextColor(layoutColor(item.color));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from 'react';
-import { renderValue, sampleCard, templateLabels, templatePrograms } from '@/lib/templates';
+import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms } from '@/lib/templates';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { id: number; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -12,7 +12,7 @@ function toPreviewCard(card?: CardSearchRow): CardSample {
   if (!card) return sampleCard;
   return {
     productId: card.id,
-    title: (card.n || sampleCard.title).toUpperCase(),
+    title: normalizeTitle(card.n || sampleCard.name),
     name: card.n || sampleCard.name,
     set: card.s || sampleCard.set,
     rarity: card.r || sampleCard.rarity,
@@ -62,7 +62,7 @@ function EpaperPreview({ program, card, editable, onChange }: { program: RenderC
               className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${editable && selected === originalIndex ? 'selected' : ''}`}
               style={{ left: item.x * scale, top: item.y * scale - 14, transform: `scale(${scale})`, transformOrigin: 'top left' }}
             >
-              {renderValue(item.value, card)}
+              {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x)}
             </div>
           );
         })}
