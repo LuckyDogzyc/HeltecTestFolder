@@ -185,6 +185,8 @@ static String jsonEscape(const String& s) {
 
 static void sendJson(int code, const String& body) {
   server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   server.send(code, "application/json; charset=utf-8", body);
 }
 
@@ -1058,6 +1060,8 @@ static void setupRoutes() {
     sendJson(200, "{\"ok\":true}");
   });
   server.on("/api/layout", HTTP_GET, []() { sendJson(200, statusJson()); });
+  server.on("/api/render-program", HTTP_OPTIONS, []() { sendJson(204, ""); });
+  server.on("/api/refresh", HTTP_OPTIONS, []() { sendJson(204, ""); });
   server.on("/api/render-program", HTTP_POST, []() {
     String body = server.arg("plain");
     if (!body.length()) body = server.arg("json");

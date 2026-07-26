@@ -1,14 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { renderValue, sampleCard, templateLabels, templatePrograms } from '@/lib/templates';
-import type { DeviceRecord, RenderCommand } from '@/lib/types';
+import type { CardSample, RenderCommand } from '@/lib/types';
 
-type CardSearchRow = { id: number; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; num?: string };
+type CardSearchRow = { id: number; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
+type LanDevice = { ip: string; name: string; deviceId: string; status: any };
+const PAGE_SIZE = 8;
 
-function EpaperPreview({ program, editable, onChange }: { program: RenderCommand[]; editable?: boolean; onChange?: (next: RenderCommand[]) => void }) {
+function toPreviewCard(card?: CardSearchRow): CardSample {
+  if (!card) return sampleCard;
+  return {
+    productId: card.id,
+    title: (card.n || sampleCard.title).toUpperCase(),
+    name: card.n || sampleCard.name,
+    set: card.s || sampleCard.set,
+    rarity: card.r || sampleCard.rarity,
+    subType: card.t || sampleCard.subType,
+    market: card.m == null ? sampleCard.market : String(card.m),
+    low: card.l == null ? sampleCard.low : String(card.l),
+    mid: card.mid == null ? sampleCard.mid : String(card.mid),
+    high: card.h == null ? sampleCard.high : String(card.h),
+    power: sampleCard.power,
+  };
+}
+
+function EpaperPreview({ program, card, editable, onChange }: { program: RenderCommand[]; card: CardSample; editable?: boolean; onChange?: (next: RenderCommand[]) => void }) {
   const [selected, setSelected] = useState(0);
-  const scale = editable ? 3 : 1;
+  const scale = editable ? 3 : 2;
   function beginDrag(index: number, ev: React.PointerEvent<HTMLDivElement>) {
     if (!editable || !onChange) return;
     const applyChange = onChange;
@@ -31,8 +50,8 @@ function EpaperPreview({ program, editable, onChange }: { program: RenderCommand
     window.addEventListener('pointerup', up);
   }
   return (
-    <div className={editable ? 'editorWrap' : ''}>
-      <div className={editable ? 'epaper big' : 'epaper'} style={editable ? {} : {}}>
+    <div className="epaperFrame">
+      <div className={editable ? 'epaper big' : 'epaper medium'}>
         {program.filter((item) => item.visible).map((item, idx) => {
           const originalIndex = program.indexOf(item);
           return (
@@ -41,9 +60,9 @@ function EpaperPreview({ program, editable, onChange }: { program: RenderCommand
               onPointerDown={(ev) => beginDrag(originalIndex, ev)}
               onClick={() => setSelected(originalIndex)}
               className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${editable && selected === originalIndex ? 'selected' : ''}`}
-              style={{ left: item.x * scale, top: item.y * scale - 14, transform: editable ? `scale(${scale})` : undefined, transformOrigin: 'top left' }}
+              style={{ left: item.x * scale, top: item.y * scale - 14, transform: `scale(${scale})`, transformOrigin: 'top left' }}
             >
-              {renderValue(item.value, sampleCard)}
+              {renderValue(item.value, card)}
             </div>
           );
         })}
@@ -52,155 +71,189 @@ function EpaperPreview({ program, editable, onChange }: { program: RenderCommand
   );
 }
 
-function ProgramEditor({ program, onChange }: { program: RenderCommand[]; onChange: (next: RenderCommand[]) => void }) {
+function ProgramEditor({ program, card, onChange }: { program: RenderCommand[]; card: CardSample; onChange: (next: RenderCommand[]) => void }) {
   function update(index: number, patch: Partial<RenderCommand>) {
     onChange(program.map((item, i) => i === index ? { ...item, ...patch } : item));
   }
   return (
-    <div className="stack">
-      <EpaperPreview program={program} editable onChange={onChange} />
-      {program.map((item, index) => (
-        <div className="fieldPanel" key={index}>
-          <label><input type="checkbox" checked={item.visible} onChange={(e) => update(index, { visible: e.target.checked })} /> 显示</label>
-          <input value={item.value} onChange={(e) => update(index, { value: e.target.value })} />
-          <input type="number" value={item.x} min={0} max={249} onChange={(e) => update(index, { x: Number(e.target.value) })} />
-          <input type="number" value={item.y} min={0} max={121} onChange={(e) => update(index, { y: Number(e.target.value) })} />
-          <select value={item.font} onChange={(e) => update(index, { font: Number(e.target.value) as 0 | 1 | 2 })}>
-            <option value={0}>小号</option><option value={1}>粗体9</option><option value={2}>标题/价格</option>
-          </select>
-          <select value={item.color} onChange={(e) => update(index, { color: Number(e.target.value) as 0 | 1 })}>
-            <option value={0}>黑色</option><option value={1}>红色</option>
-          </select>
-        </div>
-      ))}
+    <div className="editorGrid">
+      <EpaperPreview program={program} card={card} editable onChange={onChange} />
+      <div className="fieldList">
+        {program.map((item, index) => (
+          <div className="fieldPanel" key={index}>
+            <label><input type="checkbox" checked={item.visible} onChange={(e) => update(index, { visible: e.target.checked })} /> 显示</label>
+            <input aria-label="字段内容" value={item.value} onChange={(e) => update(index, { value: e.target.value })} />
+            <input aria-label="X" type="number" value={item.x} min={0} max={249} onChange={(e) => update(index, { x: Number(e.target.value) })} />
+            <input aria-label="Y" type="number" value={item.y} min={0} max={121} onChange={(e) => update(index, { y: Number(e.target.value) })} />
+            <select value={item.font} onChange={(e) => update(index, { font: Number(e.target.value) as 0 | 1 | 2 })}>
+              <option value={0}>小号</option><option value={1}>粗体9</option><option value={2}>标题/价格</option>
+            </select>
+            <select value={item.color} onChange={(e) => update(index, { color: Number(e.target.value) as 0 | 1 })}>
+              <option value={0}>黑色</option><option value={1}>红色</option>
+            </select>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
+function ipCandidates() {
+  const ranges = ['192.168.31', '192.168.1', '192.168.0', '10.0.0'];
+  const preferred = [218, 1, 2, 3, 4, 5, 10, 20, 50, 100, 101, 102, 150, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210];
+  const all: string[] = [];
+  for (const r of ranges) for (const n of preferred) all.push(`${r}.${n}`);
+  for (let n = 2; n < 255; n++) all.push(`192.168.31.${n}`);
+  return Array.from(new Set(all));
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 900) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store', mode: 'cors' });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export default function Page() {
-  const [devices, setDevices] = useState<DeviceRecord[]>([]);
-  const [publicIp, setPublicIp] = useState('');
-  const [selectedId, setSelectedId] = useState('');
   const [templateId, setTemplateId] = useState('price');
-  const [program, setProgram] = useState<RenderCommand[]>(templatePrograms.price);
-  const [productId, setProductId] = useState(562018);
+  const [program, setProgram] = useState<RenderCommand[]>(templatePrograms.price.map((x) => ({ ...x })));
   const [q, setQ] = useState('greninja');
   const [cards, setCards] = useState<CardSearchRow[]>([]);
+  const [selectedCard, setSelectedCard] = useState<CardSearchRow | undefined>();
+  const [page, setPage] = useState(1);
+  const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
+  const [selectedDeviceIp, setSelectedDeviceIp] = useState('');
+  const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState('');
-  const [localIp, setLocalIp] = useState('');
-  const [localStatus, setLocalStatus] = useState<any>(null);
 
-  const selected = useMemo(() => devices.find((d) => d.deviceId === selectedId) || devices[0], [devices, selectedId]);
-
-  async function loadDevices() {
-    const res = await fetch('/api/devices?currentNetwork=1');
-    const data = await res.json();
-    setDevices(data.devices || []);
-    setPublicIp(data.publicIp || '');
-    if (!selectedId && data.devices?.[0]) setSelectedId(data.devices[0].deviceId);
-  }
-
-  useEffect(() => { loadDevices(); }, []);
-  useEffect(() => {
-    if (!selected) return;
-    setSelectedId(selected.deviceId);
-    setTemplateId(selected.templateId || 'price');
-    setProgram(selected.renderProgram || templatePrograms.price);
-    setProductId(selected.productId || 562018);
-  }, [selected?.deviceId]);
-
-  async function searchCards() {
-    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
-    setCards(data.cards || []);
-  }
+  const previewCard = useMemo(() => toPreviewCard(selectedCard), [selectedCard]);
+  const pagedCards = cards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(cards.length / PAGE_SIZE));
 
   function chooseTemplate(id: string) {
     setTemplateId(id);
     setProgram((id === 'custom' ? program : templatePrograms[id]).map((item) => ({ ...item })));
   }
 
-  async function rename(device: DeviceRecord) {
-    const displayName = prompt('设备新名称', device.displayName) || device.displayName;
-    await fetch(`/api/devices/${device.deviceId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName }) });
-    await loadDevices();
-  }
-
-  function localBase() {
-    return localIp.startsWith('http') ? localIp.replace(/\/$/, '') : `http://${localIp.replace(/\/$/, '')}`;
-  }
-
-  async function connectLocalDevice() {
-    if (!localIp.trim()) return setMessage('请输入 ESP32 局域网 IP，例如 192.168.31.218');
-    const res = await fetch(`${localBase()}/api/status`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  async function searchCards(nextPage = 1) {
+    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
-    setLocalStatus(data);
-    if (data?.card?.productId) setProductId(data.card.productId);
-    setMessage(`已直连局域网设备：${data?.server?.deviceId || data?.wifi?.ip || localIp}`);
+    setCards(data.cards || []);
+    setPage(nextPage);
+    setMessage(`找到 ${data.cards?.length || 0} 张卡，选择一张后点“更新设备显示”`);
   }
 
-  async function saveConfig() {
-    const payload = { configVersion: Date.now(), productId, templateId, renderProgram: program };
-    if (localIp.trim()) {
-      const res = await fetch(`${localBase()}/api/render-program`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setLocalStatus(data.status || null);
-      setMessage('已通过浏览器局域网直连下发到 ESP32；设备不会定时轮询服务器');
-      return;
+  function useCard(card: CardSearchRow) {
+    setSelectedCard(card);
+    setMessage(`已选择 ${card.n}，预览已更新`);
+  }
+
+  async function probeIp(ip: string): Promise<LanDevice | null> {
+    try {
+      const res = await fetchWithTimeout(`http://${ip}/api/status`);
+      if (!res.ok) return null;
+      const status = await res.json();
+      if (!status?.wifi && !status?.config) return null;
+      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `PokemonDisplay-${ip}`, deviceId: status.server?.deviceId || '', status };
+    } catch {
+      return null;
     }
-    if (!selected) return setMessage('没有选择服务器设备；也可以输入 ESP32 局域网 IP 直连下发');
-    const res = await fetch(`/api/devices/${selected.deviceId}/config`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, templateId, renderProgram: program }),
-    });
-    const data = await res.json();
-    setMessage(data.ok ? `已保存服务器配置 v${data.device.configVersion}；注意新版 ESP32 不会定时 poll，推荐使用局域网直连下发` : `保存失败：${data.error}`);
-    await loadDevices();
   }
 
-  async function refreshLocalDevice() {
-    if (!localIp.trim()) return setMessage('请先输入 ESP32 局域网 IP');
-    const res = await fetch(`${localBase()}/api/refresh`, { method: 'POST' });
-    const data = await res.json();
-    setLocalStatus(data.status || null);
-    setMessage(data.ok ? '已让局域网 ESP32 拉取最新价格并刷新屏幕' : `刷新失败：${data.error || res.status}`);
+  async function scanLanDevices() {
+    setScanning(true);
+    setMessage('正在搜索局域网设备，大约需要几秒...');
+    const found: LanDevice[] = [];
+    const candidates = ipCandidates();
+    const concurrency = 24;
+    let index = 0;
+    async function worker() {
+      while (index < candidates.length && found.length < 8) {
+        const ip = candidates[index++];
+        const hit = await probeIp(ip);
+        if (hit && !found.some((d) => d.ip === hit.ip)) {
+          found.push(hit);
+          setLanDevices([...found]);
+          if (!selectedDeviceIp) setSelectedDeviceIp(hit.ip);
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    setScanning(false);
+    setMessage(found.length ? `发现 ${found.length} 台局域网设备` : '没有自动发现设备：请确认手机/电脑和 ESP32 在同一 Wi-Fi，且已烧录新版固件');
   }
 
-  async function registerDemo() {
-    await fetch('/api/devices', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer demo-device-key' },
-      body: JSON.stringify({ deviceId: `esp32-demo-${Math.floor(Math.random()*9000+1000)}`, factoryName: 'PokemonDisplay-DEMO', lanIp: '192.168.31.218', firmware: 'mock-0.1' }),
-    });
-    await loadDevices();
+  async function updateDevice() {
+    if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
+    const payload = {
+      configVersion: Date.now(),
+      productId: previewCard.productId,
+      templateId,
+      renderProgram: program,
+      refresh: true,
+    };
+    const res = await fetchWithTimeout(`http://${selectedDeviceIp}/api/render-program`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+    }, 12000);
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const refresh = await fetchWithTimeout(`http://${selectedDeviceIp}/api/refresh`, { method: 'POST' }, 20000);
+    const refreshData = await refresh.json();
+    if (!refresh.ok || !refreshData.ok) throw new Error(refreshData.error || `刷新失败 HTTP ${refresh.status}`);
+    setMessage(`已更新 ${selectedDeviceIp}：版式、卡牌和屏幕显示已同步`);
   }
 
   return (
     <main className="shell">
       <section className="hero">
-        <div><span className="badge">Server WebUI MVP</span><h1>Pokémon Display Manager</h1><p className="muted">公网 WebUI 只提供页面、搜索和排版工具；推荐由浏览器直接把 renderProgram 下发到同局域网 ESP32，设备不定时轮询服务器，只在刷新价格时主动请求数据。</p></div>
-        <div className="card"><div className="muted">当前访问公网 IP</div><b>{publicIp || 'loading'}</b></div>
+        <div>
+          <span className="badge">LAN Bridge WebUI</span>
+          <h1>Pokémon Display Manager</h1>
+          <p className="muted">公网服务器只负责搜索和排版；浏览器自动搜索同局域网 ESP32，并把最终显示规则直接下发给设备。</p>
+        </div>
+        <button className="primaryAction" onClick={() => updateDevice().catch((e) => setMessage(`更新失败：${e.message}`))}>更新设备显示</button>
       </section>
-      <section className="grid">
-        <aside className="stack">
-          <div className="card"><h2>局域网直连设备</h2><p className="muted">推荐路径：浏览器从公网服务器加载 WebUI，但保存配置时直接访问 ESP32 的局域网地址。ESP32 不定时访问服务器。</p><div className="row"><input value={localIp} onChange={(e) => setLocalIp(e.target.value)} placeholder="192.168.31.218 或 http://192.168.31.218" /><button onClick={() => connectLocalDevice().catch((e) => setMessage(`直连失败：${e.message}`))}>连接</button><button className="secondary" onClick={() => refreshLocalDevice().catch((e) => setMessage(`刷新失败：${e.message}`))}>让设备拉价格并刷新</button></div>{localStatus && <div className="muted">已连接：{localStatus.wifi?.ip || localIp} · 设备 {localStatus.server?.deviceId || '--'} · 模板 {localStatus.config?.template} · render {localStatus.server?.renderCommandCount || 0}</div>}</div>
-          <div className="card"><h2>当前网络设备（服务器记录，可选）</h2><p className="muted">兼容旧路径：只显示主动上报到服务器的设备。新版 ESP32 默认不定时上报，所以主要使用上方局域网直连。</p><div className="stack">
-            {devices.map((d) => <div key={d.deviceId} onClick={() => setSelectedId(d.deviceId)} className={`device ${selected?.deviceId === d.deviceId ? 'active' : ''}`}><b>{d.displayName}</b><div className="muted">{d.factoryName}</div><div><span className="pill">LAN {d.lanIp || '--'}</span><span className="pill">v{d.configVersion}</span></div><button className="secondary" onClick={(e) => { e.stopPropagation(); rename(d); }}>改名</button></div>)}
-            {!devices.length && <div className="muted">暂无服务器记录。新版 ESP32 默认不定时上报；建议输入局域网 IP 直连。</div>}
-            <button className="secondary" onClick={registerDemo}>创建演示设备</button>
-          </div></div>
-          <div className="card"><h2>卡牌搜索</h2><div className="row"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Greninja / 132 / productId" /><button onClick={searchCards}>搜索</button></div>{cards.map((c) => <div className="searchResult" key={c.id}><b>{c.n}</b><div className="muted">{c.s} · {c.r} / {c.t}</div><div>ID {c.id} · Market {c.m == null ? '--' : `$${c.m}`}</div><button className="secondary" onClick={() => setProductId(c.id)}>使用这张卡</button></div>)}</div>
+
+      <section className="layout">
+        <aside className="side stack">
+          <div className="card">
+            <h2>1、局域网设备</h2>
+            <button onClick={scanLanDevices} disabled={scanning}>{scanning ? '搜索中...' : '搜索局域网设备'}</button>
+            <div className="stack deviceList">
+              {lanDevices.map((d) => <button key={d.ip} onClick={() => setSelectedDeviceIp(d.ip)} className={`deviceChoice ${selectedDeviceIp === d.ip ? 'active' : ''}`}><b>{d.name}</b><span>{d.ip}</span></button>)}
+              {!lanDevices.length && <p className="muted">不用输入 IP。点击搜索后，选择发现的 Pokémon Display 设备。</p>}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>2、卡牌搜索</h2>
+            <div className="searchBox"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="卡名 / 编号 / productId" onKeyDown={(e) => { if (e.key === 'Enter') searchCards(); }} /><button onClick={() => searchCards()}>搜索</button></div>
+            <div className="searchList">
+              {pagedCards.map((c) => <button className={`cardRow ${selectedCard?.id === c.id ? 'active' : ''}`} key={c.id} onClick={() => useCard(c)}><b>{c.n}</b><span>{c.s || '--'} · {c.r || '--'} · Market {c.m == null ? '--' : `$${c.m}`}</span></button>)}
+            </div>
+            {!!cards.length && <div className="pager"><button className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {pageCount}</span><button className="secondary" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>下一页</button></div>}
+          </div>
         </aside>
-        <section className="stack">
-          <div className="card"><h2>显示设置：模板预览</h2><div className="previewGrid">{Object.entries(templateLabels).map(([id, label]) => <div key={id} className={`templateCard ${templateId === id ? 'active' : ''}`} onClick={() => chooseTemplate(id)}><b>{label}</b><EpaperPreview program={id === 'custom' ? program : templatePrograms[id]} /></div>)}</div></div>
-          <div className="card"><h2>{templateId === 'custom' ? '自定义布局编辑器' : `模板：${templateLabels[templateId]}`}</h2>{templateId === 'custom' ? <ProgramEditor program={program} onChange={setProgram} /> : <EpaperPreview program={program} editable={false} />}<div className="row"><label>Product ID <input type="number" value={productId} onChange={(e) => setProductId(Number(e.target.value))} /></label><button onClick={() => saveConfig().catch((e) => setMessage(`保存失败：${e.message}`))}>{localIp.trim() ? '直连下发到 ESP32' : '保存到服务器记录'}</button></div><p className="muted">选择“自定义布局”时，本区域直接变成拖动编辑器；普通模板只显示渲染预览。</p></div>
-          <div className="card"><h2>下发给设备的 renderProgram</h2><pre className="code">{JSON.stringify({ productId, templateId, renderProgram: program }, null, 2)}</pre><div className="muted">{message}</div></div>
+
+        <section className="main stack">
+          <div className="card">
+            <h2>3、显示设置</h2>
+            <div className="templateTabs">{Object.entries(templateLabels).map(([id, label]) => <button key={id} className={templateId === id ? 'active' : 'secondary'} onClick={() => chooseTemplate(id)}>{label}</button>)}</div>
+          </div>
+          <div className="card previewCard">
+            <div className="sectionTitle"><h2>{templateId === 'custom' ? '自定义布局编辑器' : `模板：${templateLabels[templateId]}`}</h2><span className="muted">当前卡牌：{previewCard.name}</span></div>
+            {templateId === 'custom' ? <ProgramEditor program={program} card={previewCard} onChange={setProgram} /> : <EpaperPreview program={program} card={previewCard} />}
+          </div>
+          <details className="card">
+            <summary>下发给设备的 renderProgram</summary>
+            <pre className="code">{JSON.stringify({ productId: previewCard.productId, templateId, renderProgram: program }, null, 2)}</pre>
+          </details>
+          <div className="message">{message || '流程：搜索设备 → 搜索并选择卡牌 → 选择模板/调整布局 → 更新设备显示。'}</div>
         </section>
       </section>
     </main>
