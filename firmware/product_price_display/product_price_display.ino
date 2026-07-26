@@ -30,7 +30,6 @@
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
 
 // ===== 出厂默认值；客户后续通过 WebUI/AP 配网覆盖到 NVS =====
 const char* DEFAULT_WIFI_SSID = "你的WiFi";
@@ -559,7 +558,7 @@ static void drawTemplatePriceFocus(const CardPrice& card) {
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 64);
   display.print("$"); display.print(card.marketPrice);
-  display.setFont(&FreeSans9pt7b);
+  display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 92);
   display.print(card.rarity.length() ? card.rarity : "Card");
@@ -573,7 +572,7 @@ static void drawTemplatePriceFocus(const CardPrice& card) {
 
 static void drawTemplateCollector(const CardPrice& card) {
   drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
-  display.setFont(&FreeSans9pt7b);
+  display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 42);
   if (card.productId == 562018) display.print("SV Promo #132");
@@ -585,7 +584,7 @@ static void drawTemplateCollector(const CardPrice& card) {
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 90);
   display.print("$"); display.print(card.marketPrice);
-  display.setFont(&FreeSans9pt7b);
+  display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_RED);
   display.setCursor(140, 85);
   display.print("L $"); display.print(card.lowPrice);
@@ -595,7 +594,7 @@ static void drawTemplateCollector(const CardPrice& card) {
 
 static void drawTemplateMarketDetail(const CardPrice& card) {
   drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
-  display.setFont(&FreeSans9pt7b);
+  display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 42); display.print("M $"); display.print(card.marketPrice);
   display.setCursor(8, 62); display.print("Low $"); display.print(card.lowPrice);
@@ -606,9 +605,9 @@ static void drawTemplateMarketDetail(const CardPrice& card) {
 }
 
 static const GFXfont* layoutFont(uint8_t font) {
+  // WebUI 下发的 renderProgram 统一使用 FreeMonoBold 字族，避免预览字体和设备字体宽度差异过大。
   if (font == 2) return &FreeMonoBold12pt7b;
-  if (font == 1) return &FreeMonoBold9pt7b;
-  return &FreeSans9pt7b;
+  return &FreeMonoBold9pt7b;
 }
 
 static uint16_t layoutColor(uint8_t color) {
@@ -731,7 +730,7 @@ static void drawScreen(const CardPrice& card) {
       else drawTemplatePriceFocus(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
-      display.setFont(&FreeSans9pt7b);
+      display.setFont(&FreeMonoBold9pt7b);
       display.setTextColor(GxEPD_BLACK);
       display.setCursor(8, 65); display.print(lastError.substring(0, 28));
       display.setCursor(8, 95); display.print("ID "); display.print(selectedProductId);
