@@ -559,37 +559,52 @@ static String statusJson() {
   return body;
 }
 
-static const char INDEX_HTML[] PROGMEM = R"HTML(
+static const char SETUP_HTML[] PROGMEM = R"HTML(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pokemon Display Setup</title><style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#171717}.wrap{max-width:640px;margin:auto;padding:16px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0001}h1{font-size:24px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ddd}input,select{flex:1;min-width:180px}button{background:#111;color:white;border:0}.secondary{background:#eee;color:#111}.muted{color:#666;font-size:14px}.ok{color:#087f23}.bad{color:#b00020}.step{font-weight:700}</style></head><body><div class="wrap"><h1>Pokémon Display Setup</h1><div class="card"><div class="step">第一步：连接家庭 Wi-Fi</div><p class="muted">当前页面只负责配网。设备热点 PokemonDisplay-XXXX 不提供互联网；配网成功后，请手机切回家庭 Wi-Fi，再打开设备地址进入完整管理后台。</p><div class="row"><select id="ssidSelect"><option value="">扫描后选择 Wi-Fi</option></select><button class="secondary" onclick="scanWifi()">扫描 Wi-Fi</button></div><div class="row"><input id="ssid" placeholder="手动输入 SSID / 隐藏网络"><input id="pass" type="password" placeholder="Wi-Fi 密码"></div><div class="row"><button onclick="saveWifi()">保存并连接</button></div><div id="result" class="muted"></div></div><div class="card"><div class="step">第二步：进入管理后台</div><div id="next" class="muted">连接成功后这里会显示设备局域网地址。</div></div></div><script>
+const $=id=>document.getElementById(id);async function api(p,opt){const r=await fetch(p,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}async function scanWifi(){const out=$('result');out.className='muted';out.textContent='扫描中...';try{const j=await api('/api/wifi/scan');const sel=$('ssidSelect');sel.innerHTML='<option value="">选择扫描到的 Wi-Fi</option>';(j.networks||[]).forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=`${n.ssid} (${n.rssi} dBm${n.secure?' 🔒':''})`;sel.appendChild(o);});out.textContent=`扫描完成：${(j.networks||[]).length} 个网络`; }catch(e){out.className='bad';out.textContent='扫描失败：'+e.message;}}$('ssidSelect').onchange=()=>{if($('ssidSelect').value)$('ssid').value=$('ssidSelect').value};async function saveWifi(){const ssid=$('ssid').value||$('ssidSelect').value, pass=$('pass').value;const out=$('result');out.className='muted';out.textContent='连接中，约 5-20 秒...';try{const j=await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`});out.className='ok';out.innerHTML=`连接成功：${j.ip} RSSI ${j.rssi}`;$('next').innerHTML=`请将手机切回家庭 Wi-Fi，然后打开：<br><b>http://${j.ip}</b>`;}catch(e){out.className='bad';out.textContent='连接失败：'+e.message;}}scanWifi();
+</script></body></html>
+)HTML";
+
+static const char MANAGEMENT_HTML[] PROGMEM = R"HTML(
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pokemon Display</title><style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#171717}.wrap{max-width:880px;margin:auto;padding:16px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0001}h1{font-size:24px}h2{font-size:18px;margin:0 0 12px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ddd}input{flex:1;min-width:180px}button{background:#111;color:white;border:0}button.secondary{background:#eee;color:#111}.danger{background:#b00020}.muted{color:#666;font-size:14px}.ok{color:#087f23}.bad{color:#b00020}.result{border:1px solid #eee;border-radius:12px;padding:10px;margin:8px 0}.price{font-size:28px;font-weight:700}.pill{display:inline-block;background:#eee;border-radius:99px;padding:4px 8px;margin:2px}details summary{cursor:pointer;font-weight:600}pre{white-space:pre-wrap;background:#111;color:#eee;padding:12px;border-radius:12px;max-height:240px;overflow:auto}.top{border:2px solid #111}.hidden{display:none}</style></head><body><div class="wrap">
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#171717}.wrap{max-width:880px;margin:auto;padding:16px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0001}h1{font-size:24px}h2{font-size:18px;margin:0 0 12px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ddd}input{flex:1;min-width:180px}button{background:#111;color:white;border:0}button.secondary{background:#eee;color:#111}.danger{background:#b00020}.muted{color:#666;font-size:14px}.ok{color:#087f23}.bad{color:#b00020}.result{border:1px solid #eee;border-radius:12px;padding:10px;margin:8px 0}.price{font-size:28px;font-weight:700}.pill{display:inline-block;background:#eee;border-radius:99px;padding:4px 8px;margin:2px}details summary{cursor:pointer;font-weight:600}pre{white-space:pre-wrap;background:#111;color:#eee;padding:12px;border-radius:12px;max-height:240px;overflow:auto}</style></head><body><div class="wrap">
 <h1>Pokémon Price Display</h1><div id="msg" class="muted">Loading...</div>
-<div class="card top" id="wifiCard"><h2>第一步：Wi-Fi 配网</h2><div id="wifiSummary" class="muted"></div><div id="wifiForm"><div class="muted">如果手机连接的是设备热点，热点只用于配网，不提供互联网；搜索索引需要手机切回家庭 Wi-Fi 后访问设备局域网 IP。</div><div class="row"><input id="ssid" placeholder="Wi-Fi SSID"><input id="pass" placeholder="Wi-Fi 密码" type="password"><button onclick="saveWifi()">保存并连接</button></div><div class="row"><button class="danger" onclick="clearWifi()">清除 Wi-Fi 设置</button></div><div id="wifiResult" class="muted"></div></div></div>
 <div class="card"><h2>当前显示</h2><div id="current"></div><div class="row"><button onclick="refreshScreen()">立即刷新屏幕</button><button class="secondary" onclick="loadStatus()">刷新状态</button></div></div>
-<div class="card"><h2>搜索卡牌</h2><div class="muted" id="searchHint">浏览器从 GitHub 加载搜索索引；如果你还连着 PokemonDisplay 热点，请先切回家庭 Wi-Fi，再用上面显示的局域网 IP 打开 WebUI。</div><div class="row"><input id="q" placeholder="输入 Greninja / 132 / promo / productId" oninput="searchCards()"><button class="secondary" onclick="loadIndex()">加载索引</button></div><div id="searchInfo" class="muted"></div><div id="results"></div></div>
+<div class="card"><h2>搜索卡牌</h2><div class="muted">浏览器从 GitHub 加载搜索索引，ESP32 只保存选中的 productId。</div><div class="row"><input id="q" placeholder="输入 Greninja / 132 / promo / productId" oninput="searchCards()"><button class="secondary" onclick="loadIndex()">加载索引</button></div><div id="searchInfo" class="muted"></div><div id="results"></div></div>
 <div class="card"><h2>手动输入 productId</h2><div class="row"><input id="pid" type="number" placeholder="562018"><button onclick="saveProduct(false)">保存</button><button onclick="saveProduct(true)">保存并刷新</button></div></div>
 <div class="card"><h2>显示设置</h2><div class="row"><select id="tpl"><option value="0">价格优先模板</option><option value="1">收藏展示模板</option><option value="2">行情详情模板</option></select><label><input id="showBat" type="checkbox"> 显示供电/电池</label><button onclick="saveConfig()">保存显示设置</button></div></div>
-<div class="card"><details><summary>诊断 / Debug</summary><pre id="diag"></pre></details></div>
+<div class="card"><details><summary>高级设置 / Wi-Fi / Debug</summary><p class="muted">Wi-Fi 初次配置在设备热点 Setup Portal 完成。这里仅保留清除 Wi-Fi 和诊断。</p><div class="row"><button class="danger" onclick="clearWifi()">清除 Wi-Fi 设置并进入配网模式</button></div><div id="advancedResult" class="muted"></div><pre id="diag"></pre></details></div>
 </div><script>
-let statusData=null,indexData=null,cards=[]; const $=id=>document.getElementById(id);
-function setMsg(t,cls='muted'){const e=$('msg');e.className=cls;e.textContent=t;} async function api(path,opt){const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}
-async function loadStatus(){try{statusData=await api('/api/status');renderStatus();setMsg('状态已更新','ok');}catch(e){setMsg('状态读取失败：'+e.message,'bad');}}
-function onApHost(){return location.hostname==='192.168.4.1'||location.hostname.endsWith('.local')===false&&statusData&&statusData.wifi&&location.hostname===statusData.wifi.apIp;}
-function renderStatus(){const s=statusData,c=s.card,w=s.wifi,p=s.power,f=s.feed; $('pid').value=c.productId; $('tpl').value=s.config.template; $('showBat').checked=s.config.showBattery; const connected=w.connected; $('wifiSummary').innerHTML=connected?`<span class="ok">已连接 ${w.ssid}，设备地址：http://${w.ip}</span> <button class="secondary" onclick="toggleWifiForm()">修改 Wi-Fi</button>`:`<span class="bad">未连接家庭 Wi-Fi。请先保存并连接。</span>`; $('wifiForm').className=connected?'hidden':''; $('current').innerHTML=`<div class="price">${c.found?'$'+c.marketPrice:'NO DATA'}</div><div><b>${c.name||'未找到卡牌'}</b></div><div class="muted">ID ${c.productId} · Bucket ${f.bucket} · HTTP ${f.httpStatus} ${f.httpError||''} · ${f.stage}</div><div><span class="pill">Wi-Fi ${connected?'已连接 '+w.ip:'未连接'}</span><span class="pill">RSSI ${w.rssi}</span><span class="pill">${p.source==='battery'?(p.voltage.toFixed(2)+'V'):'USB/未接电池'}</span>${s.config.debugWifi?'<span class="pill">DEBUG Wi-Fi</span>':''}</div><div class="muted">${c.setName||''} ${c.rarity||''} ${c.subTypeName||''}</div><div class="bad">${f.lastError||''}</div>`; if(location.hostname==='192.168.4.1'&&connected){$('searchHint').innerHTML=`当前手机可能还连着设备热点，热点不能访问 GitHub 搜索索引。请切回家庭 Wi-Fi 后打开 <b>http://${w.ip}</b> 再加载索引。`; } $('diag').textContent=JSON.stringify(s,null,2);}
-function toggleWifiForm(){const f=$('wifiForm');f.className=f.className==='hidden'?'':'hidden';}
+let statusData=null,indexData=null,cards=[]; const $=id=>document.getElementById(id);function setMsg(t,cls='muted'){const e=$('msg');e.className=cls;e.textContent=t;} async function api(path,opt){const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}async function loadStatus(){try{statusData=await api('/api/status');renderStatus();setMsg('状态已更新','ok');}catch(e){setMsg('状态读取失败：'+e.message,'bad');}}
+function renderStatus(){const s=statusData,c=s.card,w=s.wifi,p=s.power,f=s.feed; $('pid').value=c.productId; $('tpl').value=s.config.template; $('showBat').checked=s.config.showBattery; $('current').innerHTML=`<div class="price">${c.found?'$'+c.marketPrice:'NO DATA'}</div><div><b>${c.name||'未找到卡牌'}</b></div><div class="muted">ID ${c.productId} · Bucket ${f.bucket} · HTTP ${f.httpStatus} ${f.httpError||''} · ${f.stage}</div><div><span class="pill">Wi-Fi ${w.connected?'已连接 '+w.ip:'未连接'}</span><span class="pill">RSSI ${w.rssi}</span><span class="pill">${p.source==='battery'?(p.voltage.toFixed(2)+'V'):'USB/未接电池'}</span>${s.config.debugWifi?'<span class="pill">DEBUG Wi-Fi</span>':''}</div><div class="muted">${c.setName||''} ${c.rarity||''} ${c.subTypeName||''}</div><div class="bad">${f.lastError||''}</div>`; $('diag').textContent=JSON.stringify(s,null,2);}
 async function refreshScreen(){setMsg('刷新中，请等待墨水屏完成刷新...');try{const j=await api('/api/refresh',{method:'POST'});statusData=j.status;renderStatus();setMsg(j.ok?'刷新完成':'刷新失败：'+j.error,j.ok?'ok':'bad');}catch(e){setMsg('刷新失败：'+e.message,'bad');await loadStatus();}}
 async function saveProduct(doRefresh){const id=parseInt($('pid').value,10);if(!id)return setMsg('请输入有效 productId','bad');try{await api('/api/card',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'productId='+encodeURIComponent(id)});setMsg('productId 已保存'+(doRefresh?'，开始刷新':''),'ok'); if(doRefresh) await refreshScreen(); else await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
 async function saveConfig(){const body=`template=${$('tpl').value}&showBattery=${$('showBat').checked?'1':'0'}`;try{await api('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});setMsg('显示设置已保存','ok');await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
-async function saveWifi(){const body=`ssid=${encodeURIComponent($('ssid').value)}&pass=${encodeURIComponent($('pass').value)}`;$('wifiResult').className='muted';$('wifiResult').textContent='连接中...';try{const j=await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});$('wifiResult').className=j.connected?'ok':'bad';$('wifiResult').innerHTML=j.connected?`连接成功：${j.ip} RSSI ${j.rssi}。如果当前连着设备热点，请切回家庭 Wi-Fi 后访问 http://${j.ip}`:`连接失败：${j.error}`;await loadStatus();}catch(e){$('wifiResult').className='bad';$('wifiResult').textContent='连接失败：'+e.message;await loadStatus();}}
-async function clearWifi(){if(!confirm('确认清除 Wi-Fi 设置？设备会保留/启动 AP 热点用于重新配网。'))return;try{const j=await api('/api/wifi/clear',{method:'POST'});$('wifiResult').className='ok';$('wifiResult').textContent=j.message;await loadStatus();}catch(e){$('wifiResult').textContent=e.message;}}
+async function clearWifi(){if(!confirm('确认清除 Wi-Fi 设置？设备会开启 PokemonDisplay 热点用于重新配网。'))return;try{const j=await api('/api/wifi/clear',{method:'POST'});$('advancedResult').className='ok';$('advancedResult').textContent=j.message+' 请连接 PokemonDisplay 热点并打开 http://192.168.4.1';await loadStatus();}catch(e){$('advancedResult').className='bad';$('advancedResult').textContent=e.message;}}
 function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();} function lev(a,b,max=2){if(Math.abs(a.length-b.length)>max)return max+1;let prev=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let cur=[i],best=i;for(let j=1;j<=b.length;j++){let v=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));cur[j]=v;if(v<best)best=v;}if(best>max)return max+1;prev=cur;}return prev[b.length];}
 function score(c,q){if(!q)return 0;const nq=norm(q),terms=nq.split(/\s+/).filter(Boolean),hay=c.q||norm(`${c.id} ${c.n} ${c.s} ${c.r} ${c.t} ${c.num}`);if(String(c.id)===nq)return 2000;let sc=0;if(norm(c.n).includes(nq))sc+=1000;if(hay.includes(nq))sc+=700;let all=true;for(const t of terms){if(hay.includes(t))sc+=120;else all=false;}if(all&&terms.length>1)sc+=500;if(c.num&&norm(c.num)===nq)sc+=900;for(const word of hay.split(' ')){for(const t of terms){if(t.length>=4&&lev(t,word,2)<=1)sc+=60;}}return sc;}
-async function loadIndex(){if(location.hostname==='192.168.4.1'){ $('searchInfo').innerHTML='当前在设备热点页面，热点无互联网，无法从 GitHub 加载索引。请切回家庭 Wi-Fi 后访问设备局域网 IP。'; return;} if(indexData)return; $('searchInfo').textContent='加载搜索索引中...';try{const url=(statusData&&statusData.feed.searchIndexUrl)||'https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/search_index.min.json';const r=await fetch(url,{cache:'force-cache'});if(!r.ok)throw new Error('HTTP '+r.status);indexData=await r.json();cards=indexData.cards||[];$('searchInfo').textContent=`索引已加载：${cards.length} 张卡`;searchCards();}catch(e){$('searchInfo').textContent='索引加载失败：'+e.message+'。如果手机连着设备热点，请切回家庭 Wi-Fi。';}}
+async function loadIndex(){if(indexData)return; $('searchInfo').textContent='加载搜索索引中...';try{const url=(statusData&&statusData.feed.searchIndexUrl)||'https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/search_index.min.json';const r=await fetch(url,{cache:'force-cache'});if(!r.ok)throw new Error('HTTP '+r.status);indexData=await r.json();cards=indexData.cards||[];$('searchInfo').textContent=`索引已加载：${cards.length} 张卡`;searchCards();}catch(e){$('searchInfo').textContent='索引加载失败：'+e.message;}}
 function searchCards(){const q=$('q').value;if(!cards.length){$('results').innerHTML='<div class="muted">请先加载索引</div>';return;}const res=cards.map(c=>[score(c,q),c]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]).slice(0,20).map(x=>x[1]);$('results').innerHTML=res.map(c=>`<div class="result"><b>${c.n}</b><div class="muted">${c.s}</div><div>${c.r||''} / ${c.t||''} · ID ${c.id} ${c.num?'· #'+c.num:''}</div><div>Market ${c.m==null?'--':'$'+c.m} · Low ${c.l==null?'--':'$'+c.l}</div><button onclick="chooseCard(${c.id},false)">选择</button> <button onclick="chooseCard(${c.id},true)">选择并刷新屏幕</button></div>`).join('')||'<div class="muted">没有结果</div>';}
 async function chooseCard(id,rf){$('pid').value=id;await saveProduct(rf);} loadStatus();
 </script></body></html>
 )HTML";
+
+static bool isApRequest() {
+  return apRunning && server.client().localIP() == WiFi.softAPIP();
+}
+
+static void handleSetup() {
+  server.send_P(200, "text/html; charset=utf-8", SETUP_HTML);
+}
+
+static void handleManagement() {
+  server.send_P(200, "text/html; charset=utf-8", MANAGEMENT_HTML);
+}
+
 static void handleRoot() {
-  server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+  if (isApRequest() || WiFi.status() != WL_CONNECTED) handleSetup();
+  else handleManagement();
 }
 
 static void handleCaptivePortal() {
@@ -601,9 +616,22 @@ static void setupRoutes() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/generate_204", HTTP_GET, handleCaptivePortal);
   server.on("/gen_204", HTTP_GET, handleCaptivePortal);
-  server.on("/hotspot-detect.html", HTTP_GET, handleRoot);
-  server.on("/library/test/success.html", HTTP_GET, handleRoot);
+  server.on("/hotspot-detect.html", HTTP_GET, handleSetup);
+  server.on("/library/test/success.html", HTTP_GET, handleSetup);
   server.on("/connecttest.txt", HTTP_GET, []() { server.send(200, "text/plain", "Microsoft Connect Test"); });
+  server.on("/api/wifi/scan", HTTP_GET, []() {
+    int n = WiFi.scanNetworks(false, true);
+    String body = "{\"networks\":[";
+    int added = 0;
+    for (int i = 0; i < n; ++i) {
+      String ssid = WiFi.SSID(i);
+      if (!ssid.length()) continue;
+      if (added++) body += ",";
+      body += "{\"ssid\":\"" + jsonEscape(ssid) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + ",\"secure\":" + String(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true") + "}";
+    }
+    body += "]}";
+    sendJson(200, body);
+  });
   server.on("/api/status", HTTP_GET, []() { sendJson(200, statusJson()); });
   server.on("/api/card", HTTP_POST, []() {
     if (!server.hasArg("productId")) { sendJson(400, "{\"error\":\"missing productId\"}"); return; }
@@ -648,7 +676,7 @@ static void setupRoutes() {
   });
   server.onNotFound([]() {
     if (server.uri().startsWith("/api/")) sendJson(404, "{\"error\":\"not found\"}");
-    else handleRoot(); // captive portal probes often request arbitrary paths/domains
+    else handleRoot(); // captive portal probes and arbitrary paths
   });
 }
 
