@@ -87,6 +87,8 @@ export default function Page() {
   const [q, setQ] = useState('greninja');
   const [cards, setCards] = useState<CardSearchRow[]>([]);
   const [message, setMessage] = useState('');
+  const [localIp, setLocalIp] = useState('');
+  const [localStatus, setLocalStatus] = useState<any>(null);
 
   const selected = useMemo(() => devices.find((d) => d.deviceId === selectedId) || devices[0], [devices, selectedId]);
 
@@ -124,16 +126,51 @@ export default function Page() {
     await loadDevices();
   }
 
+  function localBase() {
+    return localIp.startsWith('http') ? localIp.replace(/\/$/, '') : `http://${localIp.replace(/\/$/, '')}`;
+  }
+
+  async function connectLocalDevice() {
+    if (!localIp.trim()) return setMessage('请输入 ESP32 局域网 IP，例如 192.168.31.218');
+    const res = await fetch(`${localBase()}/api/status`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    setLocalStatus(data);
+    if (data?.card?.productId) setProductId(data.card.productId);
+    setMessage(`已直连局域网设备：${data?.server?.deviceId || data?.wifi?.ip || localIp}`);
+  }
+
   async function saveConfig() {
-    if (!selected) return;
+    const payload = { configVersion: Date.now(), productId, templateId, renderProgram: program };
+    if (localIp.trim()) {
+      const res = await fetch(`${localBase()}/api/render-program`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setLocalStatus(data.status || null);
+      setMessage('已通过浏览器局域网直连下发到 ESP32；设备不会定时轮询服务器');
+      return;
+    }
+    if (!selected) return setMessage('没有选择服务器设备；也可以输入 ESP32 局域网 IP 直连下发');
     const res = await fetch(`/api/devices/${selected.deviceId}/config`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productId, templateId, renderProgram: program }),
     });
     const data = await res.json();
-    setMessage(data.ok ? `已保存配置 v${data.device.configVersion}，ESP32 下次 poll 时获取` : `保存失败：${data.error}`);
+    setMessage(data.ok ? `已保存服务器配置 v${data.device.configVersion}；注意新版 ESP32 不会定时 poll，推荐使用局域网直连下发` : `保存失败：${data.error}`);
     await loadDevices();
+  }
+
+  async function refreshLocalDevice() {
+    if (!localIp.trim()) return setMessage('请先输入 ESP32 局域网 IP');
+    const res = await fetch(`${localBase()}/api/refresh`, { method: 'POST' });
+    const data = await res.json();
+    setLocalStatus(data.status || null);
+    setMessage(data.ok ? '已让局域网 ESP32 拉取最新价格并刷新屏幕' : `刷新失败：${data.error || res.status}`);
   }
 
   async function registerDemo() {
@@ -147,21 +184,22 @@ export default function Page() {
   return (
     <main className="shell">
       <section className="hero">
-        <div><span className="badge">Server WebUI MVP</span><h1>Pokémon Display Manager</h1><p className="muted">公网 WebUI：按同公网 IP 显示最近在线且已认证设备；服务器生成 renderProgram，设备后续可本地拉价格并按规则刷新。</p></div>
+        <div><span className="badge">Server WebUI MVP</span><h1>Pokémon Display Manager</h1><p className="muted">公网 WebUI 只提供页面、搜索和排版工具；推荐由浏览器直接把 renderProgram 下发到同局域网 ESP32，设备不定时轮询服务器，只在刷新价格时主动请求数据。</p></div>
         <div className="card"><div className="muted">当前访问公网 IP</div><b>{publicIp || 'loading'}</b></div>
       </section>
       <section className="grid">
         <aside className="stack">
-          <div className="card"><h2>当前网络设备</h2><p className="muted">MVP 用“设备上报 publicIp == 浏览器 publicIp + 最近在线”模拟本局域网发现。</p><div className="stack">
+          <div className="card"><h2>局域网直连设备</h2><p className="muted">推荐路径：浏览器从公网服务器加载 WebUI，但保存配置时直接访问 ESP32 的局域网地址。ESP32 不定时访问服务器。</p><div className="row"><input value={localIp} onChange={(e) => setLocalIp(e.target.value)} placeholder="192.168.31.218 或 http://192.168.31.218" /><button onClick={() => connectLocalDevice().catch((e) => setMessage(`直连失败：${e.message}`))}>连接</button><button className="secondary" onClick={() => refreshLocalDevice().catch((e) => setMessage(`刷新失败：${e.message}`))}>让设备拉价格并刷新</button></div>{localStatus && <div className="muted">已连接：{localStatus.wifi?.ip || localIp} · 设备 {localStatus.server?.deviceId || '--'} · 模板 {localStatus.config?.template} · render {localStatus.server?.renderCommandCount || 0}</div>}</div>
+          <div className="card"><h2>当前网络设备（服务器记录，可选）</h2><p className="muted">兼容旧路径：只显示主动上报到服务器的设备。新版 ESP32 默认不定时上报，所以主要使用上方局域网直连。</p><div className="stack">
             {devices.map((d) => <div key={d.deviceId} onClick={() => setSelectedId(d.deviceId)} className={`device ${selected?.deviceId === d.deviceId ? 'active' : ''}`}><b>{d.displayName}</b><div className="muted">{d.factoryName}</div><div><span className="pill">LAN {d.lanIp || '--'}</span><span className="pill">v{d.configVersion}</span></div><button className="secondary" onClick={(e) => { e.stopPropagation(); rename(d); }}>改名</button></div>)}
-            {!devices.length && <div className="muted">暂无设备。真实 ESP32 接入后会自动上报；现在可创建演示设备。</div>}
+            {!devices.length && <div className="muted">暂无服务器记录。新版 ESP32 默认不定时上报；建议输入局域网 IP 直连。</div>}
             <button className="secondary" onClick={registerDemo}>创建演示设备</button>
           </div></div>
           <div className="card"><h2>卡牌搜索</h2><div className="row"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Greninja / 132 / productId" /><button onClick={searchCards}>搜索</button></div>{cards.map((c) => <div className="searchResult" key={c.id}><b>{c.n}</b><div className="muted">{c.s} · {c.r} / {c.t}</div><div>ID {c.id} · Market {c.m == null ? '--' : `$${c.m}`}</div><button className="secondary" onClick={() => setProductId(c.id)}>使用这张卡</button></div>)}</div>
         </aside>
         <section className="stack">
           <div className="card"><h2>显示设置：模板预览</h2><div className="previewGrid">{Object.entries(templateLabels).map(([id, label]) => <div key={id} className={`templateCard ${templateId === id ? 'active' : ''}`} onClick={() => chooseTemplate(id)}><b>{label}</b><EpaperPreview program={id === 'custom' ? program : templatePrograms[id]} /></div>)}</div></div>
-          <div className="card"><h2>{templateId === 'custom' ? '自定义布局编辑器' : `模板：${templateLabels[templateId]}`}</h2>{templateId === 'custom' ? <ProgramEditor program={program} onChange={setProgram} /> : <EpaperPreview program={program} editable={false} />}<div className="row"><label>Product ID <input type="number" value={productId} onChange={(e) => setProductId(Number(e.target.value))} /></label><button onClick={saveConfig}>保存到设备配置</button></div><p className="muted">选择“自定义布局”时，本区域直接变成拖动编辑器；普通模板只显示渲染预览。</p></div>
+          <div className="card"><h2>{templateId === 'custom' ? '自定义布局编辑器' : `模板：${templateLabels[templateId]}`}</h2>{templateId === 'custom' ? <ProgramEditor program={program} onChange={setProgram} /> : <EpaperPreview program={program} editable={false} />}<div className="row"><label>Product ID <input type="number" value={productId} onChange={(e) => setProductId(Number(e.target.value))} /></label><button onClick={() => saveConfig().catch((e) => setMessage(`保存失败：${e.message}`))}>{localIp.trim() ? '直连下发到 ESP32' : '保存到服务器记录'}</button></div><p className="muted">选择“自定义布局”时，本区域直接变成拖动编辑器；普通模板只显示渲染预览。</p></div>
           <div className="card"><h2>下发给设备的 renderProgram</h2><pre className="code">{JSON.stringify({ productId, templateId, renderProgram: program }, null, 2)}</pre><div className="muted">{message}</div></div>
         </section>
       </section>

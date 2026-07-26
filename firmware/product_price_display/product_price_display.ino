@@ -58,9 +58,9 @@ static const char* PRODUCT_BUCKET_BASE_URL =
 static const char* SEARCH_INDEX_URL =
   "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/search_index.min.json";
 
-// 公网/远程 Server WebUI。当前测试服务器：43.162.99.23:2300。
-// 正式产品后续可改成 HTTPS 域名。
-static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
+// 公网/远程 Server WebUI 只提供浏览器页面；ESP32 默认不主动轮询服务器。
+// 配置下发优先走“浏览器 -> ESP32 局域网直连”。如需调试服务器注册，可通过 /api/server 手动设置。
+static const char* DEFAULT_SERVER_BASE_URL = "";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -892,7 +892,6 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     connectWiFiWithFeedback(savedSsid, savedPass, 15000);
   }
   if (WiFi.status() == WL_CONNECTED) {
-    pollServerConfig();
     ok = fetchSelectedCardFromBucket(currentCard);
   } else {
     lastError = "No WiFi";
@@ -1059,6 +1058,14 @@ static void setupRoutes() {
     sendJson(200, "{\"ok\":true}");
   });
   server.on("/api/layout", HTTP_GET, []() { sendJson(200, statusJson()); });
+  server.on("/api/render-program", HTTP_POST, []() {
+    String body = server.arg("plain");
+    if (!body.length()) body = server.arg("json");
+    if (!body.length()) { sendJson(400, "{\"ok\":false,\"error\":\"empty render program body\"}"); return; }
+    bool ok = applyServerConfigJson(body);
+    String resp = String("{\"ok\":") + (ok ? "true" : "false") + ",\"error\":\"" + jsonEscape(lastServerError) + "\",\"status\":" + statusJson() + "}";
+    sendJson(ok ? 200 : 400, resp);
+  });
   server.on("/api/server", HTTP_POST, []() {
     serverBaseUrl = server.arg("url");
     serverBaseUrl.trim();
@@ -1150,10 +1157,6 @@ void setup() {
                 WiFi.softAPIP().toString().c_str(),
                 BOOT_AUTO_REFRESH ? "true" : "false");
   setStage("webui-ready");
-  if (WiFi.status() == WL_CONNECTED && serverSyncConfigured()) {
-    serverRegisterOrHeartbeat();
-    pollServerConfig();
-  }
 
   if (BOOT_AUTO_REFRESH) {
     if (WiFi.status() == WL_CONNECTED) refreshCardAndScreen(true);
@@ -1167,9 +1170,5 @@ void setup() {
 void loop() {
   if (apRunning) dnsServer.processNextRequest();
   server.handleClient();
-  if (!refreshInProgress && serverSyncConfigured() && WiFi.status() == WL_CONNECTED && millis() - lastServerHeartbeatMs > SERVER_HEARTBEAT_INTERVAL_MS) {
-    serverRegisterOrHeartbeat();
-    pollServerConfig();
-  }
   delay(2);
 }
