@@ -94,6 +94,29 @@ struct PowerState {
   bool batteryValid = false;
 };
 
+static constexpr int LAYOUT_ITEM_COUNT = 8;
+struct LayoutItem {
+  bool visible;
+  uint8_t x;
+  uint8_t y;
+  uint8_t font;  // 0 small, 1 bold9, 2 bold12
+  uint8_t color; // 0 black, 1 red
+};
+
+const char* LAYOUT_FIELDS[LAYOUT_ITEM_COUNT] = {"name", "set", "market", "low", "mid", "high", "pid", "power"};
+const char* LAYOUT_LABELS[LAYOUT_ITEM_COUNT] = {"Card Name", "Set", "Market", "Low", "Mid", "High", "Product ID", "Power"};
+LayoutItem customLayout[LAYOUT_ITEM_COUNT];
+const LayoutItem DEFAULT_LAYOUT[LAYOUT_ITEM_COUNT] = {
+  {true, 8, 18, 2, 1},   // name
+  {true, 8, 42, 0, 0},   // set
+  {true, 8, 72, 2, 0},   // market
+  {true, 150, 92, 0, 1}, // low
+  {false, 8, 102, 0, 0}, // mid
+  {false, 92, 102, 0, 0},// high
+  {true, 8, 112, 0, 0},  // product id
+  {true, 182, 112, 0, 1} // power
+};
+
 Preferences prefs;
 WebServer server(80);
 DNSServer dnsServer;
@@ -146,6 +169,7 @@ static void loadConfig() {
   showBattery = prefs.getBool("showBat", true);
   savedSsid = prefs.getString("ssid", DEFAULT_WIFI_SSID);
   savedPass = prefs.getString("pass", DEFAULT_WIFI_PASS);
+  loadLayoutConfig();
   if (savedSsid == "你的WiFi") savedSsid = "";
   if (DEBUG_USE_CODE_WIFI) {
     savedSsid = DEBUG_WIFI_SSID;
@@ -161,6 +185,27 @@ static void saveCardConfig() {
 static void saveDisplayConfig() {
   prefs.putInt("template", selectedTemplate);
   prefs.putBool("showBat", showBattery);
+}
+
+static void loadLayoutConfig() {
+  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
+    customLayout[i] = DEFAULT_LAYOUT[i];
+    customLayout[i].visible = prefs.getBool((String("l") + i + "v").c_str(), DEFAULT_LAYOUT[i].visible);
+    customLayout[i].x = (uint8_t)constrain(prefs.getUChar((String("l") + i + "x").c_str(), DEFAULT_LAYOUT[i].x), 0, 249);
+    customLayout[i].y = (uint8_t)constrain(prefs.getUChar((String("l") + i + "y").c_str(), DEFAULT_LAYOUT[i].y), 0, 121);
+    customLayout[i].font = (uint8_t)constrain(prefs.getUChar((String("l") + i + "f").c_str(), DEFAULT_LAYOUT[i].font), 0, 2);
+    customLayout[i].color = (uint8_t)constrain(prefs.getUChar((String("l") + i + "c").c_str(), DEFAULT_LAYOUT[i].color), 0, 1);
+  }
+}
+
+static void saveLayoutConfig() {
+  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
+    prefs.putBool((String("l") + i + "v").c_str(), customLayout[i].visible);
+    prefs.putUChar((String("l") + i + "x").c_str(), customLayout[i].x);
+    prefs.putUChar((String("l") + i + "y").c_str(), customLayout[i].y);
+    prefs.putUChar((String("l") + i + "f").c_str(), customLayout[i].font);
+    prefs.putUChar((String("l") + i + "c").c_str(), customLayout[i].color);
+  }
 }
 
 static PowerState readBatteryVoltage() {
@@ -471,6 +516,41 @@ static void drawTemplateMarketDetail(const CardPrice& card) {
   if (p.length()) { display.setTextColor(GxEPD_RED); display.setCursor(160, 102); display.print(p); }
 }
 
+static const GFXfont* layoutFont(uint8_t font) {
+  if (font == 2) return &FreeMonoBold12pt7b;
+  if (font == 1) return &FreeMonoBold9pt7b;
+  return &FreeSans9pt7b;
+}
+
+static uint16_t layoutColor(uint8_t color) {
+  return color == 1 ? GxEPD_RED : GxEPD_BLACK;
+}
+
+static String layoutValue(int index, const CardPrice& card) {
+  if (index == 0) return displayTitle(card);
+  if (index == 1) { String v = card.setName; if (v.length() > 28) v = v.substring(0, 28); return v; }
+  if (index == 2) return String("$") + card.marketPrice;
+  if (index == 3) return String("L $") + card.lowPrice;
+  if (index == 4) return String("M $") + card.midPrice;
+  if (index == 5) return String("H $") + card.highPrice;
+  if (index == 6) return String("ID ") + card.productId;
+  if (index == 7) return powerLabel();
+  return "";
+}
+
+static void drawCustomLayout(const CardPrice& card) {
+  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
+    const LayoutItem& item = customLayout[i];
+    if (!item.visible) continue;
+    String value = layoutValue(i, card);
+    if (!value.length()) continue;
+    display.setFont(layoutFont(item.font));
+    display.setTextColor(layoutColor(item.color));
+    display.setCursor(item.x, item.y);
+    display.print(value);
+  }
+}
+
 static void drawScreen(const CardPrice& card) {
   setStage("epd-init");
   SPI.begin(EPD_SCLK, -1, EPD_MOSI, EPD_CS);
@@ -484,6 +564,7 @@ static void drawScreen(const CardPrice& card) {
     if (card.found) {
       if (selectedTemplate == 1) drawTemplateCollector(card);
       else if (selectedTemplate == 2) drawTemplateMarketDetail(card);
+      else if (selectedTemplate == 3) drawCustomLayout(card);
       else drawTemplatePriceFocus(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
@@ -564,7 +645,16 @@ static String statusJson() {
   body += "\"template\":" + String(selectedTemplate) + ",";
   body += "\"showBattery\":" + String(showBattery ? "true" : "false") + ",";
   body += "\"refreshInProgress\":" + String(refreshInProgress ? "true" : "false") + ",";
-  body += "\"debugWifi\":" + String(DEBUG_USE_CODE_WIFI ? "true" : "false") + "}";
+  body += "\"debugWifi\":" + String(DEBUG_USE_CODE_WIFI ? "true" : "false") + "},";
+  body += "\"layout\":{";
+  body += "\"items\":[";
+  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
+    if (i) body += ",";
+    body += "{\"i\":" + String(i) + ",\"field\":\"" + LAYOUT_FIELDS[i] + "\",\"label\":\"" + LAYOUT_LABELS[i] + "\",";
+    body += "\"v\":" + String(customLayout[i].visible ? "true" : "false") + ",\"x\":" + String(customLayout[i].x) + ",\"y\":" + String(customLayout[i].y) + ",";
+    body += "\"f\":" + String(customLayout[i].font) + ",\"c\":" + String(customLayout[i].color) + "}";
+  }
+  body += "]}";
   body += "}";
   return body;
 }
@@ -583,14 +673,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;marg
 <div class="card"><h2>当前显示</h2><div id="current"></div><div class="row"><button onclick="refreshScreen()">立即刷新屏幕</button><button class="secondary" onclick="loadStatus()">刷新状态</button></div></div>
 <div class="card"><h2>搜索卡牌</h2><div class="muted">浏览器从 GitHub 加载搜索索引，ESP32 只保存选中的 productId。</div><div class="row"><input id="q" placeholder="输入 Greninja / 132 / promo / productId" oninput="searchCards()"><button class="secondary" onclick="loadIndex()">加载索引</button></div><div id="searchInfo" class="muted"></div><div id="results"></div></div>
 <div class="card"><h2>手动输入 productId</h2><div class="row"><input id="pid" type="number" placeholder="562018"><button onclick="saveProduct(false)">保存</button><button onclick="saveProduct(true)">保存并刷新</button></div></div>
-<div class="card"><h2>显示设置</h2><div class="row"><select id="tpl"><option value="0">价格优先模板</option><option value="1">收藏展示模板</option><option value="2">行情详情模板</option></select><label><input id="showBat" type="checkbox"> 显示供电/电池</label><button onclick="saveConfig()">保存显示设置</button></div></div>
+<div class="card"><h2>显示设置</h2><div class="row"><select id="tpl"><option value="0">价格优先模板</option><option value="1">收藏展示模板</option><option value="2">行情详情模板</option><option value="3">自定义布局</option></select><label><input id="showBat" type="checkbox"> 显示供电/电池</label><button onclick="saveConfig()">保存显示设置</button></div></div>
+<div class="card"><details open><summary>自定义布局 MVP（表单版）</summary><p class="muted">先用表单验证排版引擎；模板选择“自定义布局”后生效。坐标范围：x 0-249，y 0-121。</p><div id="layoutEditor"></div><div class="row"><button onclick="saveLayout(false)">保存布局</button><button onclick="saveLayout(true)">保存布局并刷新屏幕</button></div><div id="layoutResult" class="muted"></div></details></div>
 <div class="card"><details><summary>高级设置 / Wi-Fi / Debug</summary><p class="muted">Wi-Fi 初次配置在设备热点 Setup Portal 完成。这里仅保留清除 Wi-Fi 和诊断。</p><div class="row"><button class="danger" onclick="clearWifi()">清除 Wi-Fi 设置并进入配网模式</button></div><div id="advancedResult" class="muted"></div><pre id="diag"></pre></details></div>
 </div><script>
 let statusData=null,indexData=null,cards=[]; const $=id=>document.getElementById(id);function setMsg(t,cls='muted'){const e=$('msg');e.className=cls;e.textContent=t;} async function api(path,opt){const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}async function loadStatus(){try{statusData=await api('/api/status');renderStatus();setMsg('状态已更新','ok');}catch(e){setMsg('状态读取失败：'+e.message,'bad');}}
-function renderStatus(){const s=statusData,c=s.card,w=s.wifi,p=s.power,f=s.feed; $('pid').value=c.productId; $('tpl').value=s.config.template; $('showBat').checked=s.config.showBattery; $('current').innerHTML=`<div class="price">${c.found?'$'+c.marketPrice:'NO DATA'}</div><div><b>${c.name||'未找到卡牌'}</b></div><div class="muted">ID ${c.productId} · Bucket ${f.bucket} · HTTP ${f.httpStatus} ${f.httpError||''} · ${f.stage}</div><div><span class="pill">Wi-Fi ${w.connected?'已连接 '+w.ip:'未连接'}</span><span class="pill">RSSI ${w.rssi}</span><span class="pill">${p.source==='battery'?(p.voltage.toFixed(2)+'V'):'USB/未接电池'}</span>${s.config.debugWifi?'<span class="pill">DEBUG Wi-Fi</span>':''}</div><div class="muted">${c.setName||''} ${c.rarity||''} ${c.subTypeName||''}</div><div class="bad">${f.lastError||''}</div>`; $('diag').textContent=JSON.stringify(s,null,2);}
+function renderStatus(){const s=statusData,c=s.card,w=s.wifi,p=s.power,f=s.feed; $('pid').value=c.productId; $('tpl').value=s.config.template; $('showBat').checked=s.config.showBattery; $('current').innerHTML=`<div class="price">${c.found?'$'+c.marketPrice:'NO DATA'}</div><div><b>${c.name||'未找到卡牌'}</b></div><div class="muted">ID ${c.productId} · Bucket ${f.bucket} · HTTP ${f.httpStatus} ${f.httpError||''} · ${f.stage}</div><div><span class="pill">Wi-Fi ${w.connected?'已连接 '+w.ip:'未连接'}</span><span class="pill">RSSI ${w.rssi}</span><span class="pill">${p.source==='battery'?(p.voltage.toFixed(2)+'V'):'USB/未接电池'}</span>${s.config.debugWifi?'<span class="pill">DEBUG Wi-Fi</span>':''}</div><div class="muted">${c.setName||''} ${c.rarity||''} ${c.subTypeName||''}</div><div class="bad">${f.lastError||''}</div>`; $('diag').textContent=JSON.stringify(s,null,2);renderLayoutEditor(s.layout.items||[]);}
 async function refreshScreen(){setMsg('刷新中，请等待墨水屏完成刷新...');try{const j=await api('/api/refresh',{method:'POST'});statusData=j.status;renderStatus();setMsg(j.ok?'刷新完成':'刷新失败：'+j.error,j.ok?'ok':'bad');}catch(e){setMsg('刷新失败：'+e.message,'bad');await loadStatus();}}
 async function saveProduct(doRefresh){const id=parseInt($('pid').value,10);if(!id)return setMsg('请输入有效 productId','bad');try{await api('/api/card',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'productId='+encodeURIComponent(id)});setMsg('productId 已保存'+(doRefresh?'，开始刷新':''),'ok'); if(doRefresh) await refreshScreen(); else await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
 async function saveConfig(){const body=`template=${$('tpl').value}&showBattery=${$('showBat').checked?'1':'0'}`;try{await api('/api/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});setMsg('显示设置已保存','ok');await loadStatus();}catch(e){setMsg('保存失败：'+e.message,'bad');}}
+function renderLayoutEditor(items){$('layoutEditor').innerHTML=items.map(it=>`<div class="result"><b>${it.label}</b> <span class="muted">${it.field}</span><div class="row"><label><input id="lv${it.i}" type="checkbox" ${it.v?'checked':''}>显示</label><input id="lx${it.i}" type="number" min="0" max="249" value="${it.x}" placeholder="x"><input id="ly${it.i}" type="number" min="0" max="121" value="${it.y}" placeholder="y"><select id="lf${it.i}"><option value="0">小号</option><option value="1">粗体9</option><option value="2">标题12</option></select><select id="lc${it.i}"><option value="0">黑色</option><option value="1">红色</option></select></div></div>`).join('');items.forEach(it=>{const f=$('lf'+it.i),c=$('lc'+it.i);if(f)f.value=it.f;if(c)c.value=it.c;});}
+async function saveLayout(doRefresh){const items=(statusData&&statusData.layout&&statusData.layout.items)||[];let body=items.map(it=>`v${it.i}=${$('lv'+it.i).checked?'1':'0'}&x${it.i}=${$('lx'+it.i).value}&y${it.i}=${$('ly'+it.i).value}&f${it.i}=${$('lf'+it.i).value}&c${it.i}=${$('lc'+it.i).value}`).join('&');$('layoutResult').textContent='保存中...';try{await api('/api/layout',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});$('layoutResult').className='ok';$('layoutResult').textContent='布局已保存';await loadStatus();if(doRefresh)await refreshScreen();}catch(e){$('layoutResult').className='bad';$('layoutResult').textContent='保存失败：'+e.message;}}
 async function clearWifi(){if(!confirm('确认清除 Wi-Fi 设置？设备会开启 PokemonDisplay 热点用于重新配网。'))return;try{const j=await api('/api/wifi/clear',{method:'POST'});$('advancedResult').className='ok';$('advancedResult').textContent=j.message+' 请连接 PokemonDisplay 热点并打开 http://192.168.4.1';await loadStatus();}catch(e){$('advancedResult').className='bad';$('advancedResult').textContent=e.message;}}
 function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();} function lev(a,b,max=2){if(Math.abs(a.length-b.length)>max)return max+1;let prev=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let cur=[i],best=i;for(let j=1;j<=b.length;j++){let v=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));cur[j]=v;if(v<best)best=v;}if(best>max)return max+1;prev=cur;}return prev[b.length];}
 function score(c,q){if(!q)return 0;const nq=norm(q),terms=nq.split(/\s+/).filter(Boolean),hay=c.q||norm(`${c.id} ${c.n} ${c.s} ${c.r} ${c.t} ${c.num}`);if(String(c.id)===nq)return 2000;let sc=0;if(norm(c.n).includes(nq))sc+=1000;if(hay.includes(nq))sc+=700;let all=true;for(const t of terms){if(hay.includes(t))sc+=120;else all=false;}if(all&&terms.length>1)sc+=500;if(c.num&&norm(c.num)===nq)sc+=900;for(const word of hay.split(' ')){for(const t of terms){if(t.length>=4&&lev(t,word,2)<=1)sc+=60;}}return sc;}
@@ -652,9 +745,21 @@ static void setupRoutes() {
     sendJson(200, String("{\"ok\":true,\"productId\":") + selectedProductId + "}");
   });
   server.on("/api/config", HTTP_POST, []() {
-    if (server.hasArg("template")) selectedTemplate = constrain(server.arg("template").toInt(), 0, 2);
+    if (server.hasArg("template")) selectedTemplate = constrain(server.arg("template").toInt(), 0, 3);
     if (server.hasArg("showBattery")) showBattery = server.arg("showBattery") == "1" || server.arg("showBattery") == "true";
     saveDisplayConfig();
+    sendJson(200, "{\"ok\":true}");
+  });
+  server.on("/api/layout", HTTP_GET, []() { sendJson(200, statusJson()); });
+  server.on("/api/layout", HTTP_POST, []() {
+    for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
+      customLayout[i].visible = server.arg(String("v") + i) == "1" || server.arg(String("v") + i) == "true";
+      customLayout[i].x = (uint8_t)constrain(server.arg(String("x") + i).toInt(), 0, 249);
+      customLayout[i].y = (uint8_t)constrain(server.arg(String("y") + i).toInt(), 0, 121);
+      customLayout[i].font = (uint8_t)constrain(server.arg(String("f") + i).toInt(), 0, 2);
+      customLayout[i].color = (uint8_t)constrain(server.arg(String("c") + i).toInt(), 0, 1);
+    }
+    saveLayoutConfig();
     sendJson(200, "{\"ok\":true}");
   });
   server.on("/api/refresh", HTTP_POST, []() {
