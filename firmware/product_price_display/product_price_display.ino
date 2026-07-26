@@ -58,6 +58,11 @@ static const char* PRODUCT_BUCKET_BASE_URL =
 static const char* SEARCH_INDEX_URL =
   "https://raw.githubusercontent.com/LuckyDogzyc/HeltecTestFolder/main/cards/search_index.min.json";
 
+// 公网/远程 Server WebUI。默认留空，先通过本地 WebUI API 设置到 NVS。
+// 例如：http://your-server:3200；正式产品可改成 HTTPS 域名。
+static const char* DEFAULT_SERVER_BASE_URL = "";
+static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
+
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
 static constexpr int EPD_RST  = 26;
@@ -117,6 +122,18 @@ const LayoutItem DEFAULT_LAYOUT[LAYOUT_ITEM_COUNT] = {
   {true, 182, 112, 0, 1} // power
 };
 
+static constexpr int RENDER_CMD_MAX = 10;
+struct RenderCommand {
+  bool visible;
+  uint8_t x;
+  uint8_t y;
+  uint8_t font;
+  uint8_t color;
+  String value; // e.g. "{title}", "${market}", "ID {productId}"
+};
+RenderCommand renderProgram[RENDER_CMD_MAX];
+int renderProgramCount = 0;
+
 Preferences prefs;
 WebServer server(80);
 DNSServer dnsServer;
@@ -136,6 +153,15 @@ int selectedTemplate = 0; // 0 price focus, 1 collector, 2 market detail
 bool showBattery = true;
 String savedSsid;
 String savedPass;
+
+String serverBaseUrl;
+String deviceId;
+String deviceKey;
+int serverConfigVersion = 0;
+String serverTemplateId;
+uint32_t lastServerHeartbeatMs = 0;
+String lastServerError;
+int lastServerHttpStatus = 0;
 
 static void setStage(const String& stage) {
   lastStage = stage;
@@ -169,7 +195,13 @@ static void loadConfig() {
   showBattery = prefs.getBool("showBat", true);
   savedSsid = prefs.getString("ssid", DEFAULT_WIFI_SSID);
   savedPass = prefs.getString("pass", DEFAULT_WIFI_PASS);
+  serverBaseUrl = prefs.getString("srvUrl", DEFAULT_SERVER_BASE_URL);
+  deviceId = prefs.getString("devId", "");
+  deviceKey = prefs.getString("devKey", "");
+  serverConfigVersion = prefs.getInt("srvVer", 0);
+  serverTemplateId = prefs.getString("srvTpl", "");
   loadLayoutConfig();
+  loadRenderProgramConfig();
   if (savedSsid == "你的WiFi") savedSsid = "";
   if (DEBUG_USE_CODE_WIFI) {
     savedSsid = DEBUG_WIFI_SSID;
@@ -206,6 +238,61 @@ static void saveLayoutConfig() {
     prefs.putUChar((String("l") + i + "f").c_str(), customLayout[i].font);
     prefs.putUChar((String("l") + i + "c").c_str(), customLayout[i].color);
   }
+}
+
+static void loadRenderProgramConfig() {
+  renderProgramCount = constrain(prefs.getInt("rpCount", 0), 0, RENDER_CMD_MAX);
+  for (int i = 0; i < renderProgramCount; ++i) {
+    renderProgram[i].visible = prefs.getBool((String("rp") + i + "v").c_str(), true);
+    renderProgram[i].x = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "x").c_str(), 0), 0, 249);
+    renderProgram[i].y = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "y").c_str(), 0), 0, 121);
+    renderProgram[i].font = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "f").c_str(), 0), 0, 2);
+    renderProgram[i].color = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "c").c_str(), 0), 0, 1);
+    renderProgram[i].value = prefs.getString((String("rp") + i + "t").c_str(), "");
+  }
+}
+
+static void saveRenderProgramConfig() {
+  prefs.putInt("rpCount", renderProgramCount);
+  for (int i = 0; i < renderProgramCount; ++i) {
+    prefs.putBool((String("rp") + i + "v").c_str(), renderProgram[i].visible);
+    prefs.putUChar((String("rp") + i + "x").c_str(), renderProgram[i].x);
+    prefs.putUChar((String("rp") + i + "y").c_str(), renderProgram[i].y);
+    prefs.putUChar((String("rp") + i + "f").c_str(), renderProgram[i].font);
+    prefs.putUChar((String("rp") + i + "c").c_str(), renderProgram[i].color);
+    prefs.putString((String("rp") + i + "t").c_str(), renderProgram[i].value.substring(0, 48));
+  }
+}
+
+static String macSuffix() {
+  uint64_t mac = ESP.getEfuseMac();
+  char buf[7];
+  snprintf(buf, sizeof(buf), "%06X", (uint32_t)(mac & 0xFFFFFF));
+  return String(buf);
+}
+
+static String randomHexKey() {
+  char buf[25];
+  uint32_t a = esp_random();
+  uint32_t b = esp_random();
+  uint32_t c = esp_random();
+  snprintf(buf, sizeof(buf), "%08X%08X%08X", a, b, c);
+  return String(buf);
+}
+
+static void ensureDeviceIdentity() {
+  if (!deviceId.length()) {
+    deviceId = String("esp32-") + macSuffix();
+    prefs.putString("devId", deviceId);
+  }
+  if (!deviceKey.length()) {
+    deviceKey = randomHexKey();
+    prefs.putString("devKey", deviceKey);
+  }
+}
+
+static bool serverSyncConfigured() {
+  return serverBaseUrl.startsWith("http://") || serverBaseUrl.startsWith("https://");
 }
 
 static PowerState readBatteryVoltage() {
@@ -541,6 +628,50 @@ static String layoutValue(int index, const CardPrice& card) {
   return "";
 }
 
+
+static String renderFieldValue(const CardPrice& card, const String& key) {
+  if (key == "title") return displayTitle(card);
+  if (key == "name") return card.productName;
+  if (key == "set") { String v = card.setName; if (v.length() > 28) v = v.substring(0, 28); return v; }
+  if (key == "rarity") return card.rarity;
+  if (key == "subType") return card.subTypeName;
+  if (key == "productId") return String(card.productId);
+  if (key == "market") return card.marketPrice;
+  if (key == "low") return card.lowPrice;
+  if (key == "mid") return card.midPrice;
+  if (key == "high") return card.highPrice;
+  if (key == "power") {
+    if (!powerState.batteryValid) return "USB";
+    return String("B ") + String(powerState.voltage, 2) + "V";
+  }
+  return "";
+}
+
+static String applyRenderPlaceholders(String value, const CardPrice& card) {
+  const char* keys[] = {"title", "name", "set", "rarity", "subType", "productId", "market", "low", "mid", "high", "power"};
+  for (uint8_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+    String k = keys[i];
+    String v = renderFieldValue(card, k);
+    value.replace(String("{") + k + "}", v);
+    value.replace(String("${") + k + "}", String("$") + v);
+  }
+  if (value.length() > 34) value = value.substring(0, 34);
+  return value;
+}
+
+static void drawRenderProgram(const CardPrice& card) {
+  for (int i = 0; i < renderProgramCount; ++i) {
+    const RenderCommand& item = renderProgram[i];
+    if (!item.visible || !item.value.length()) continue;
+    String value = applyRenderPlaceholders(item.value, card);
+    if (!value.length()) continue;
+    display.setFont(layoutFont(item.font));
+    display.setTextColor(layoutColor(item.color));
+    display.setCursor(item.x, item.y);
+    display.print(value);
+  }
+}
+
 static void drawCustomLayout(const CardPrice& card) {
   for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
     const LayoutItem& item = customLayout[i];
@@ -568,6 +699,7 @@ static void drawScreen(const CardPrice& card) {
       if (selectedTemplate == 1) drawTemplateCollector(card);
       else if (selectedTemplate == 2) drawTemplateMarketDetail(card);
       else if (selectedTemplate == 3) drawCustomLayout(card);
+      else if (selectedTemplate == 4 && renderProgramCount > 0) drawRenderProgram(card);
       else drawTemplatePriceFocus(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
@@ -581,6 +713,169 @@ static void drawScreen(const CardPrice& card) {
   } while (display.nextPage());
   display.hibernate();
   setStage("epd-done");
+}
+
+
+static String serverUrl(const String& path) {
+  String base = serverBaseUrl;
+  while (base.endsWith("/")) base.remove(base.length() - 1);
+  return base + path;
+}
+
+static String jsonStringField(const String& json, const String& key, int from = 0) {
+  String needle = String("\"") + key + "\":\"";
+  int p = json.indexOf(needle, from);
+  if (p < 0) return "";
+  p += needle.length();
+  String out;
+  bool esc = false;
+  for (int i = p; i < (int)json.length(); ++i) {
+    char c = json[i];
+    if (esc) {
+      if (c == 'n') out += '\n';
+      else out += c;
+      esc = false;
+    } else if (c == '\\') esc = true;
+    else if (c == '"') break;
+    else out += c;
+  }
+  return out;
+}
+
+static int jsonIntField(const String& json, const String& key, int def, int from = 0) {
+  String needle = String("\"") + key + "\":";
+  int p = json.indexOf(needle, from);
+  if (p < 0) return def;
+  p += needle.length();
+  while (p < (int)json.length() && json[p] == ' ') ++p;
+  int e = p;
+  while (e < (int)json.length() && (isDigit(json[e]) || json[e] == '-')) ++e;
+  if (e <= p) return def;
+  return json.substring(p, e).toInt();
+}
+
+static bool jsonBoolField(const String& json, const String& key, bool def, int from = 0) {
+  String needle = String("\"") + key + "\":";
+  int p = json.indexOf(needle, from);
+  if (p < 0) return def;
+  p += needle.length();
+  if (json.substring(p, p + 4) == "true") return true;
+  if (json.substring(p, p + 5) == "false") return false;
+  return def;
+}
+
+static bool applyServerConfigJson(const String& body) {
+  int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
+  long newProductId = jsonIntField(body, "productId", selectedProductId);
+  String newTemplateId = jsonStringField(body, "templateId");
+  int rp = body.indexOf("\"renderProgram\"");
+  if (rp < 0) { lastServerError = "No renderProgram"; return false; }
+  int arrStart = body.indexOf('[', rp);
+  int arrEnd = body.indexOf(']', arrStart);
+  if (arrStart < 0 || arrEnd < 0) { lastServerError = "Bad renderProgram"; return false; }
+  int count = 0;
+  int pos = arrStart;
+  while (count < RENDER_CMD_MAX) {
+    int os = body.indexOf('{', pos);
+    if (os < 0 || os > arrEnd) break;
+    int oe = body.indexOf('}', os);
+    if (oe < 0 || oe > arrEnd) break;
+    String obj = body.substring(os, oe + 1);
+    String type = jsonStringField(obj, "type");
+    String value = jsonStringField(obj, "value");
+    if (type == "text" && value.length()) {
+      renderProgram[count].visible = jsonBoolField(obj, "visible", true);
+      renderProgram[count].x = (uint8_t)constrain(jsonIntField(obj, "x", 0), 0, 249);
+      renderProgram[count].y = (uint8_t)constrain(jsonIntField(obj, "y", 0), 0, 121);
+      renderProgram[count].font = (uint8_t)constrain(jsonIntField(obj, "font", 0), 0, 2);
+      renderProgram[count].color = (uint8_t)constrain(jsonIntField(obj, "color", 0), 0, 1);
+      renderProgram[count].value = value.substring(0, 48);
+      ++count;
+    }
+    pos = oe + 1;
+  }
+  if (count <= 0) { lastServerError = "No text commands"; return false; }
+  renderProgramCount = count;
+  selectedProductId = newProductId;
+  selectedTemplate = 4;
+  serverConfigVersion = newVersion;
+  serverTemplateId = newTemplateId.length() ? newTemplateId : "server";
+  prefs.putLong("productId", selectedProductId);
+  prefs.putInt("template", selectedTemplate);
+  prefs.putInt("srvVer", serverConfigVersion);
+  prefs.putString("srvTpl", serverTemplateId);
+  saveRenderProgramConfig();
+  lastServerError = "";
+  Serial.printf("Applied server config v%d productId=%ld commands=%d template=%s\n", serverConfigVersion, selectedProductId, renderProgramCount, serverTemplateId.c_str());
+  return true;
+}
+
+static bool httpBeginAny(HTTPClient& http, WiFiClient& client, WiFiClientSecure& secureClient, const String& url) {
+  if (url.startsWith("https://")) {
+    secureClient.setInsecure();
+    secureClient.setTimeout(12000);
+    return http.begin(secureClient, url);
+  }
+  return http.begin(client, url);
+}
+
+static bool serverRegisterOrHeartbeat() {
+  if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) return false;
+  ensureDeviceIdentity();
+  HTTPClient http;
+  WiFiClient client;
+  WiFiClientSecure secureClient;
+  String url = serverUrl("/api/devices");
+  if (!httpBeginAny(http, client, secureClient, url)) { lastServerError = "server begin failed"; return false; }
+  http.setTimeout(12000);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + deviceKey);
+  String payload = "{";
+  payload += "\"deviceId\":\"" + jsonEscape(deviceId) + "\",";
+  payload += "\"factoryName\":\"PokemonDisplay-" + macSuffix() + "\",";
+  payload += "\"lanIp\":\"" + WiFi.localIP().toString() + "\",";
+  payload += "\"firmware\":\"product-price-display-0.2\",";
+  payload += "\"status\":{";
+  payload += "\"stage\":\"" + jsonEscape(lastStage) + "\",";
+  payload += "\"productId\":" + String(selectedProductId) + ",";
+  payload += "\"configVersion\":" + String(serverConfigVersion) + "}}";
+  int code = http.POST(payload);
+  lastServerHttpStatus = code;
+  if (code < 200 || code >= 300) lastServerError = String("register HTTP ") + code;
+  else lastServerError = "";
+  http.end();
+  lastServerHeartbeatMs = millis();
+  Serial.printf("Server heartbeat status=%d url=%s\n", code, url.c_str());
+  return code >= 200 && code < 300;
+}
+
+static bool pollServerConfig() {
+  if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) return false;
+  ensureDeviceIdentity();
+  HTTPClient http;
+  WiFiClient client;
+  WiFiClientSecure secureClient;
+  String url = serverUrl(String("/api/devices/") + deviceId + "/config?version=" + serverConfigVersion);
+  if (!httpBeginAny(http, client, secureClient, url)) { lastServerError = "config begin failed"; return false; }
+  http.setTimeout(12000);
+  http.addHeader("Authorization", String("Bearer ") + deviceKey);
+  int code = http.GET();
+  lastServerHttpStatus = code;
+  if (code == 304) {
+    lastServerError = "";
+    http.end();
+    Serial.println("Server config unchanged (304)");
+    return false;
+  }
+  if (code != 200) {
+    lastServerError = String("config HTTP ") + code;
+    http.end();
+    Serial.printf("Server config failed status=%d\n", code);
+    return false;
+  }
+  String body = http.getString();
+  http.end();
+  return applyServerConfigJson(body);
 }
 
 static bool refreshCardAndScreen(bool drawEvenIfFail) {
@@ -597,6 +892,7 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     connectWiFiWithFeedback(savedSsid, savedPass, 15000);
   }
   if (WiFi.status() == WL_CONNECTED) {
+    pollServerConfig();
     ok = fetchSelectedCardFromBucket(currentCard);
   } else {
     lastError = "No WiFi";
@@ -649,6 +945,15 @@ static String statusJson() {
   body += "\"showBattery\":" + String(showBattery ? "true" : "false") + ",";
   body += "\"refreshInProgress\":" + String(refreshInProgress ? "true" : "false") + ",";
   body += "\"debugWifi\":" + String(DEBUG_USE_CODE_WIFI ? "true" : "false") + "},";
+  body += "\"server\":{";
+  body += "\"configured\":" + String(serverSyncConfigured() ? "true" : "false") + ",";
+  body += "\"baseUrl\":\"" + jsonEscape(serverBaseUrl) + "\",";
+  body += "\"deviceId\":\"" + jsonEscape(deviceId) + "\",";
+  body += "\"configVersion\":" + String(serverConfigVersion) + ",";
+  body += "\"templateId\":\"" + jsonEscape(serverTemplateId) + "\",";
+  body += "\"renderCommandCount\":" + String(renderProgramCount) + ",";
+  body += "\"httpStatus\":" + String(lastServerHttpStatus) + ",";
+  body += "\"lastError\":\"" + jsonEscape(lastServerError) + "\"},";
   body += "\"layout\":{";
   body += "\"items\":[";
   for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
@@ -754,6 +1059,28 @@ static void setupRoutes() {
     sendJson(200, "{\"ok\":true}");
   });
   server.on("/api/layout", HTTP_GET, []() { sendJson(200, statusJson()); });
+  server.on("/api/server", HTTP_POST, []() {
+    serverBaseUrl = server.arg("url");
+    serverBaseUrl.trim();
+    prefs.putString("srvUrl", serverBaseUrl);
+    if (server.arg("resetVersion") == "1") {
+      serverConfigVersion = 0;
+      prefs.putInt("srvVer", 0);
+    }
+    bool ok = false;
+    if (serverSyncConfigured() && WiFi.status() == WL_CONNECTED) {
+      ok = serverRegisterOrHeartbeat();
+      pollServerConfig();
+    }
+    String body = String("{\"ok\":") + (serverSyncConfigured() ? "true" : "false") + ",\"registered\":" + (ok ? "true" : "false") + ",\"status\":" + statusJson() + "}";
+    sendJson(200, body);
+  });
+  server.on("/api/server/poll", HTTP_POST, []() {
+    bool heartbeat = serverRegisterOrHeartbeat();
+    bool changed = pollServerConfig();
+    String body = String("{\"heartbeat\":") + (heartbeat ? "true" : "false") + ",\"changed\":" + (changed ? "true" : "false") + ",\"status\":" + statusJson() + "}";
+    sendJson(200, body);
+  });
   server.on("/api/layout", HTTP_POST, []() {
     for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
       customLayout[i].visible = server.arg(String("v") + i) == "1" || server.arg(String("v") + i) == "true";
@@ -806,7 +1133,8 @@ void setup() {
   Serial.println();
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
   loadConfig();
-  Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false");
+  ensureDeviceIdentity();
+  Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s server=%s deviceId=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false", serverBaseUrl.c_str(), deviceId.c_str());
 
   powerState = readBatteryVoltage();
   bool wifiOk = false;
@@ -822,6 +1150,10 @@ void setup() {
                 WiFi.softAPIP().toString().c_str(),
                 BOOT_AUTO_REFRESH ? "true" : "false");
   setStage("webui-ready");
+  if (WiFi.status() == WL_CONNECTED && serverSyncConfigured()) {
+    serverRegisterOrHeartbeat();
+    pollServerConfig();
+  }
 
   if (BOOT_AUTO_REFRESH) {
     if (WiFi.status() == WL_CONNECTED) refreshCardAndScreen(true);
@@ -835,5 +1167,9 @@ void setup() {
 void loop() {
   if (apRunning) dnsServer.processNextRequest();
   server.handleClient();
+  if (!refreshInProgress && serverSyncConfigured() && WiFi.status() == WL_CONNECTED && millis() - lastServerHeartbeatMs > SERVER_HEARTBEAT_INTERVAL_MS) {
+    serverRegisterOrHeartbeat();
+    pollServerConfig();
+  }
   delay(2);
 }
