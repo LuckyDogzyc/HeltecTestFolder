@@ -283,8 +283,9 @@ static String randomHexKey() {
 }
 
 static void ensureDeviceIdentity() {
-  if (!deviceId.length()) {
-    deviceId = String("esp32-") + macSuffix();
+  String preferredId = String("pokemon-display-") + macSuffix();
+  if (!deviceId.length() || deviceId.startsWith("esp32-")) {
+    deviceId = preferredId;
     prefs.putString("devId", deviceId);
   }
   if (!deviceKey.length()) {
@@ -766,6 +767,29 @@ static bool jsonBoolField(const String& json, const String& key, bool def, int f
   return def;
 }
 
+static int jsonClosingIndex(const String& json, int start, char openCh, char closeCh) {
+  if (start < 0 || start >= (int)json.length() || json[start] != openCh) return -1;
+  bool inString = false;
+  bool esc = false;
+  int depth = 0;
+  for (int i = start; i < (int)json.length(); ++i) {
+    char c = json[i];
+    if (esc) { esc = false; continue; }
+    if (inString) {
+      if (c == '\\') esc = true;
+      else if (c == '"') inString = false;
+      continue;
+    }
+    if (c == '"') { inString = true; continue; }
+    if (c == openCh) ++depth;
+    else if (c == closeCh) {
+      --depth;
+      if (depth == 0) return i;
+    }
+  }
+  return -1;
+}
+
 static bool applyServerConfigJson(const String& body) {
   int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
   long newProductId = jsonIntField(body, "productId", selectedProductId);
@@ -773,14 +797,14 @@ static bool applyServerConfigJson(const String& body) {
   int rp = body.indexOf("\"renderProgram\"");
   if (rp < 0) { lastServerError = "No renderProgram"; return false; }
   int arrStart = body.indexOf('[', rp);
-  int arrEnd = body.indexOf(']', arrStart);
+  int arrEnd = jsonClosingIndex(body, arrStart, '[', ']');
   if (arrStart < 0 || arrEnd < 0) { lastServerError = "Bad renderProgram"; return false; }
   int count = 0;
   int pos = arrStart;
   while (count < RENDER_CMD_MAX) {
     int os = body.indexOf('{', pos);
     if (os < 0 || os > arrEnd) break;
-    int oe = body.indexOf('}', os);
+    int oe = jsonClosingIndex(body, os, '{', '}');
     if (oe < 0 || oe > arrEnd) break;
     String obj = body.substring(os, oe + 1);
     String type = jsonStringField(obj, "type");
@@ -1067,7 +1091,10 @@ static void setupRoutes() {
     if (!body.length()) body = server.arg("json");
     if (!body.length()) { sendJson(400, "{\"ok\":false,\"error\":\"empty render program body\"}"); return; }
     bool ok = applyServerConfigJson(body);
-    String resp = String("{\"ok\":") + (ok ? "true" : "false") + ",\"error\":\"" + jsonEscape(lastServerError) + "\",\"status\":" + statusJson() + "}";
+    bool refreshNow = ok && jsonBoolField(body, "refresh", false);
+    if (refreshNow) ok = refreshCardAndScreen(true);
+    String err = refreshNow ? lastError : lastServerError;
+    String resp = String("{\"ok\":") + (ok ? "true" : "false") + ",\"refreshed\":" + (refreshNow ? "true" : "false") + ",\"error\":\"" + jsonEscape(err) + "\",\"status\":" + statusJson() + "}";
     sendJson(ok ? 200 : 400, resp);
   });
   server.on("/api/server", HTTP_POST, []() {

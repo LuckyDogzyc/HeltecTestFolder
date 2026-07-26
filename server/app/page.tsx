@@ -157,7 +157,7 @@ export default function Page() {
       if (!res.ok) return null;
       const status = await res.json();
       if (!status?.wifi && !status?.config) return null;
-      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `PokemonDisplay-${ip}`, deviceId: status.server?.deviceId || '', status };
+      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `pokemon-display-${ip.split('.').pop()}`, deviceId: status.server?.deviceId || '', status };
     } catch {
       return null;
     }
@@ -202,9 +202,6 @@ export default function Page() {
     }, 12000);
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    const refresh = await fetchWithTimeout(`http://${selectedDeviceIp}/api/refresh`, { method: 'POST' }, 20000);
-    const refreshData = await refresh.json();
-    if (!refresh.ok || !refreshData.ok) throw new Error(refreshData.error || `刷新失败 HTTP ${refresh.status}`);
     setMessage(`已更新 ${selectedDeviceIp}：版式、卡牌和屏幕显示已同步`);
   }
 
