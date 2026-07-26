@@ -42,6 +42,11 @@ static constexpr bool DEBUG_USE_CODE_WIFI = false;
 const char* DEBUG_WIFI_SSID = "你的调试WiFi";
 const char* DEBUG_WIFI_PASS = "你的调试密码";
 
+// 当前是常开/WebUI 调试阶段：即使已保存 Wi-Fi，也始终开启 AP Setup Portal。
+// 这样手机总能连 PokemonDisplay-XXXX 做首次配网；家庭 Wi-Fi 下访问 STA IP 进入管理后台。
+// 未来接入物理开关/deep sleep 后，可在省电模式关闭此项。
+static constexpr bool ALWAYS_START_SETUP_AP = true;
+
 static constexpr long DEFAULT_PRODUCT_ID = 562018; // Greninja ex - 132, SV Promo
 static constexpr int PRODUCT_BUCKET_COUNT = 256;
 static const char* PRODUCT_BUCKET_BASE_URL =
@@ -277,6 +282,7 @@ static bool fetchSelectedCardFromBucket(CardPrice& card) {
   setStage("http-bucket-begin");
   WiFiClientSecure client;
   client.setInsecure();
+  client.setTimeout(15000);
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setConnectTimeout(8000);
@@ -686,10 +692,11 @@ void setup() {
   Serial.println();
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
   loadConfig();
-  Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str());
+  Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false");
 
   powerState = readBatteryVoltage();
   bool wifiOk = false;
+  if (ALWAYS_START_SETUP_AP) startConfigAP();
   if (savedSsid.length()) wifiOk = connectWiFiWithFeedback(savedSsid, savedPass, 20000);
   if (!wifiOk) startConfigAP();
 
