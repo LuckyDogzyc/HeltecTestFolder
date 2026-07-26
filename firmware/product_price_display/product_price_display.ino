@@ -47,6 +47,10 @@ const char* DEBUG_WIFI_PASS = "你的调试密码";
 // 未来接入物理开关/deep sleep 后，可在省电模式关闭此项。
 static constexpr bool ALWAYS_START_SETUP_AP = true;
 
+// WebUI 调试阶段默认不开机自动刷新：先保证手机 AP 配网页和管理后台立刻可访问。
+// 否则 HTTP/墨水屏刷新会阻塞 loop()，手机连上 AP 后 captive portal 没法响应。
+static constexpr bool BOOT_AUTO_REFRESH = false;
+
 static constexpr long DEFAULT_PRODUCT_ID = 562018; // Greninja ex - 132, SV Promo
 static constexpr int PRODUCT_BUCKET_COUNT = 256;
 static const char* PRODUCT_BUCKET_BASE_URL =
@@ -700,16 +704,22 @@ void setup() {
   if (savedSsid.length()) wifiOk = connectWiFiWithFeedback(savedSsid, savedPass, 20000);
   if (!wifiOk) startConfigAP();
 
-  if (WiFi.status() == WL_CONNECTED) refreshCardAndScreen(true);
-  else drawScreen(currentCard);
-
   setupRoutes();
   server.begin();
-  Serial.printf("WebUI started. STA IP=%s AP=%s AP IP=%s\n",
+  Serial.printf("WebUI started. STA IP=%s AP=%s AP IP=%s bootAutoRefresh=%s\n",
                 WiFi.localIP().toString().c_str(),
                 apRunning ? apSsid.c_str() : "off",
-                WiFi.softAPIP().toString().c_str());
+                WiFi.softAPIP().toString().c_str(),
+                BOOT_AUTO_REFRESH ? "true" : "false");
   setStage("webui-ready");
+
+  if (BOOT_AUTO_REFRESH) {
+    if (WiFi.status() == WL_CONNECTED) refreshCardAndScreen(true);
+    else drawScreen(currentCard);
+    setStage("webui-ready");
+  } else {
+    Serial.println("Boot auto refresh disabled; use WebUI button to refresh screen.");
+  }
 }
 
 void loop() {
