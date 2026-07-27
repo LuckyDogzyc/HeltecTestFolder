@@ -1,187 +1,188 @@
 productId,setName,productName,rarity,subTypeName,marketPrice,midPrice,lowPrice,highPrice
-42406,Base Set,Rattata,Common,Normal,0.73,0.62,0.14,19.16
-44454,Fossil,Omanyte,Common,1st Edition,3.91,3.86,0.8,100.0
-44454,Fossil,Omanyte,Common,Unlimited,0.75,0.65,0.12,18.44
-83622,EX Holon Phantoms,Armaldo (Delta Species),Holo Rare,Holofoil,43.65,65.3,35.98,449.9
-83622,EX Holon Phantoms,Armaldo (Delta Species),Holo Rare,Reverse Holofoil,66.67,481.98,111.0,999.9
-83878,Gym Challenge,Blaine's Ponyta,Common,1st Edition,2.74,2.77,1.5,38.1
-83878,Gym Challenge,Blaine's Ponyta,Common,Unlimited,1.11,1.0,0.36,19.56
-84134,Legendary Collection,Caterpie,Common,Normal,1.08,0.99,0.2,19.98
+42406,Base Set,Rattata,Common,Normal,0.73,0.63,0.14,19.16
+44454,Fossil,Omanyte,Common,1st Edition,3.91,3.8,0.8,100.0
+44454,Fossil,Omanyte,Common,Unlimited,0.76,0.64,0.12,18.38
+83622,EX Holon Phantoms,Armaldo (Delta Species),Holo Rare,Holofoil,47.26,65.48,35.98,449.9
+83622,EX Holon Phantoms,Armaldo (Delta Species),Holo Rare,Reverse Holofoil,75.54,515.94,371.66,999.9
+83878,Gym Challenge,Blaine's Ponyta,Common,1st Edition,2.74,2.76,1.5,38.1
+83878,Gym Challenge,Blaine's Ponyta,Common,Unlimited,1.12,1.0,0.36,19.5
+84134,Legendary Collection,Caterpie,Common,Normal,1.07,0.99,0.2,19.98
 84134,Legendary Collection,Caterpie,Common,Reverse Holofoil,99.95,649.99,594.99,819.9
 84390,Plasma Storm,Colress (Team Plasma) (135 Full Art),Ultra Rare,Holofoil,94.13,95.0,54.14,591.2
 84646,Legendary Collection,Dark Raichu,Holo Rare,Holofoil,74.0,626.4,509.8,743.0
 84646,Legendary Collection,Dark Raichu,Holo Rare,Reverse Holofoil,399.99,644.99,499.99,789.99
-84902,Dragon Vault,Dragonair (3),Holo Rare,Holofoil,5.52,6.82,4.1,104.45
-85158,Stormfront,Electrode (37),Uncommon,Normal,0.67,0.65,0.15,19.98
+84902,Dragon Vault,Dragonair (3),Holo Rare,Holofoil,5.52,6.5,4.1,104.39
+85158,Stormfront,Electrode (37),Uncommon,Normal,0.65,0.66,0.15,19.98
 85158,Stormfront,Electrode (37),Uncommon,Reverse Holofoil,1.37,6.0,1.25,19.98
-85414,Expedition,Feraligatr (12),Holo Rare,Holofoil,331.83,399.99,295.99,499.99
+85414,Expedition,Feraligatr (12),Holo Rare,Holofoil,331.83,299.99,295.99,429.99
 85414,Expedition,Feraligatr (12),Holo Rare,Reverse Holofoil,153.87,128.4,69.99,239.99
 85670,Legendary Collection,Gengar,Holo Rare,Holofoil,160.0,1174.9,225.0,1852.78
 85670,Legendary Collection,Gengar,Holo Rare,Reverse Holofoil,1599.99,2499.98,1999.99,2499.99
 85926,Call of Legends,Groudon (Shiny),Shiny Holo Rare,Holofoil,456.25,715.0,630.0,799.99
 86182,HeartGold SoulSilver,Hoppip,Common,Normal,0.49,0.5,0.25,5.0
-86182,HeartGold SoulSilver,Hoppip,Common,Reverse Holofoil,5.78,14.24,5.74,102.35
-86438,Legendary Treasures,Keldeo EX,Ultra Rare,Holofoil,4.49,4.44,2.0,50.12
-86694,Legends Awakened,Ledian,Uncommon,Normal,0.42,0.34,0.17,19.98
+86182,HeartGold SoulSilver,Hoppip,Common,Reverse Holofoil,5.78,9.99,5.49,102.35
+86438,Legendary Treasures,Keldeo EX,Ultra Rare,Holofoil,4.52,4.47,2.0,50.12
+86694,Legends Awakened,Ledian,Uncommon,Normal,0.42,0.32,0.17,19.98
 86694,Legends Awakened,Ledian,Uncommon,Reverse Holofoil,1.71,3.07,1.67,29.8
-86950,Deck Exclusives,Luxray - 46/99,Rare,Normal,1.57,1.53,0.75,59.84
-87206,HGSS Trainer Kit: Gyarados & Raichu,Mareep (#20),Common,Normal,2.15,2.17,0.56,33.6
-87462,Aquapolis,Miltank,Common,Normal,8.69,7.38,3.09,4321.0
+86950,Deck Exclusives,Luxray - 46/99,Rare,Normal,1.57,1.4,0.75,59.84
+87206,HGSS Trainer Kit: Gyarados & Raichu,Mareep (#20),Common,Normal,2.15,2.18,0.56,33.6
+87462,Aquapolis,Miltank,Common,Normal,8.69,8.14,3.09,50.0
 87462,Aquapolis,Miltank,Common,Reverse Holofoil,74.99,56.0,29.0,699.9
-87718,Mysterious Treasures,Nidoran F,Common,Normal,0.26,0.28,0.1,19.98
-87718,Mysterious Treasures,Nidoran F,Common,Reverse Holofoil,1.82,4.0,1.37,28.9
-87974,EX Ruby and Sapphire,Pelipper,Rare,Normal,1.14,1.13,0.41,19.0
+87718,Mysterious Treasures,Nidoran F,Common,Normal,0.26,0.29,0.1,19.98
+87718,Mysterious Treasures,Nidoran F,Common,Reverse Holofoil,1.82,4.99,1.37,28.9
+87974,EX Ruby and Sapphire,Pelipper,Rare,Normal,1.15,1.15,0.41,18.94
 87974,EX Ruby and Sapphire,Pelipper,Rare,Reverse Holofoil,6.21,26.49,5.58,399.9
-88230,Aquapolis,Pokemon Park,Uncommon,Normal,21.31,28.37,26.64,330.0
+88230,Aquapolis,Pokemon Park,Uncommon,Normal,21.31,33.25,26.99,330.0
 88230,Aquapolis,Pokemon Park,Uncommon,Reverse Holofoil,66.66,414.95,225.0,699.9
-88486,HeartGold SoulSilver,Quilava,Uncommon,Normal,1.91,1.24,0.75,26.4
+88486,HeartGold SoulSilver,Quilava,Uncommon,Normal,1.91,1.41,0.75,26.4
 88486,HeartGold SoulSilver,Quilava,Uncommon,Reverse Holofoil,7.09,27.85,25.0,30.69
-88742,Diamond and Pearl,Rhyhorn,Common,Normal,0.4,0.4,0.19,18.3
-88742,Diamond and Pearl,Rhyhorn,Common,Reverse Holofoil,2.58,2.47,1.8,36.0
+88742,Diamond and Pearl,Rhyhorn,Common,Normal,0.4,0.4,0.19,18.24
+88742,Diamond and Pearl,Rhyhorn,Common,Reverse Holofoil,2.66,2.29,1.8,36.0
 88998,EX FireRed & LeafGreen,Scyther,Rare,Normal,3.99,6.75,2.46,91.04
-88998,EX FireRed & LeafGreen,Scyther,Rare,Reverse Holofoil,76.78,199.25,99.01,309.86
-89254,Aquapolis,Skiploom,Uncommon,Normal,18.82,39.96,38.6,57.75
-89510,Plasma Freeze,Staraptor,Rare,Normal,0.74,0.74,0.39,19.98
+88998,EX FireRed & LeafGreen,Scyther,Rare,Reverse Holofoil,86.13,199.25,99.01,309.8
+89254,Aquapolis,Skiploom,Uncommon,Normal,18.82,39.96,34.99,57.75
+89254,Aquapolis,Skiploom,Uncommon,Reverse Holofoil,95.0,399.99,399.99,399.99
+89510,Plasma Freeze,Staraptor,Rare,Normal,0.73,0.74,0.39,19.98
 89510,Plasma Freeze,Staraptor,Rare,Reverse Holofoil,4.05,4.09,1.97,45.1
-89766,Unleashed,Tauros,Uncommon,Normal,2.54,2.53,1.5,50.0
-89766,Unleashed,Tauros,Uncommon,Reverse Holofoil,25.97,24.99,18.0,149.9
+89766,Unleashed,Tauros,Uncommon,Normal,2.54,2.56,1.5,50.0
+89766,Unleashed,Tauros,Uncommon,Reverse Holofoil,25.97,21.99,15.16,149.9
 90022,EX Power Keepers,Trapinch,Common,Normal,1.39,0.71,0.35,96.95
 90022,EX Power Keepers,Trapinch,Common,Reverse Holofoil,30.99,30.99,15.77,299.98
-90278,EX Sandstorm,Vaporeon,Rare,Normal,18.51,25.61,17.0,172.34
+90278,EX Sandstorm,Vaporeon,Rare,Normal,19.18,27.88,17.0,172.34
 90278,EX Sandstorm,Vaporeon,Rare,Reverse Holofoil,124.99,179.99,99.99,1019.9
 90534,Next Destinies,Weavile,Rare,Normal,0.58,0.55,0.14,19.98
-90534,Next Destinies,Weavile,Rare,Reverse Holofoil,0.92,0.85,0.37,19.98
-94630,XY - Phantom Forces,Dialga EX,Ultra Rare,Holofoil,10.41,10.09,5.5,111.5
+90534,Next Destinies,Weavile,Rare,Reverse Holofoil,0.92,0.82,0.37,19.98
+94630,XY - Phantom Forces,Dialga EX,Ultra Rare,Holofoil,10.41,10.09,6.02,111.5
 97702,HGSS Promos,Tropical Tidal Wave - HGSS18 (Worlds 10) [Semi-Finalist],Promo,,,,,
 98726,BW Trainer Kit: Excadrill & Zoroark,Darkness Energy (#22),Common,Normal,0.38,0.88,0.2,19.98
-107174,XY - BREAKthrough,Raikou,Holo Rare,Holofoil,3.23,2.99,0.98,35.88
-107174,XY - BREAKthrough,Raikou,Holo Rare,Reverse Holofoil,3.12,3.05,1.99,4321.0
+107174,XY - BREAKthrough,Raikou,Holo Rare,Holofoil,3.21,2.99,0.98,35.82
+107174,XY - BREAKthrough,Raikou,Holo Rare,Reverse Holofoil,3.18,3.0,1.99,43.0
 111526,XY - BREAKpoint,Shellder (23),Common,Normal,0.09,0.2,0.03,9.99
 111526,XY - BREAKpoint,Shellder (23),Common,Reverse Holofoil,0.38,0.39,0.02,19.98
 120998,XY - Steam Siege,Seedot,Common,Normal,0.14,0.2,0.01,1000.0
-120998,XY - Steam Siege,Seedot,Common,Reverse Holofoil,0.31,0.32,0.01,16.62
+120998,XY - Steam Siege,Seedot,Common,Reverse Holofoil,0.31,0.32,0.01,16.56
 124070,XY - Evolutions,Machop,Common,Normal,0.19,0.2,0.01,5.95
-124070,XY - Evolutions,Machop,Common,Reverse Holofoil,0.48,0.48,0.18,19.98
-126886,SM Base Set,Lurantis GX,Ultra Rare,Holofoil,1.6,1.65,0.99,18.8
-127142,XY Promos,Gym Badge (Misty),Promo,Holofoil,49.71,69.98,58.72,2496.17
-130982,SM - Guardians Rising,Pancham,Common,Normal,0.21,0.21,0.01,5.05
-130982,SM - Guardians Rising,Pancham,Common,Reverse Holofoil,0.34,0.38,0.13,19.98
+124070,XY - Evolutions,Machop,Common,Reverse Holofoil,0.5,0.48,0.16,19.98
+126886,SM Base Set,Lurantis GX,Ultra Rare,Holofoil,1.55,1.63,0.99,18.8
+127142,XY Promos,Gym Badge (Misty),Promo,Holofoil,52.72,69.98,56.72,2496.11
+130982,SM - Guardians Rising,Pancham,Common,Normal,0.23,0.22,0.01,5.05
+130982,SM - Guardians Rising,Pancham,Common,Reverse Holofoil,0.34,0.38,0.15,19.98
 138150,Legendary Collection,Legendary Collection Booster Pack,,Normal,,4999.99,4999.98,7000.0
-151974,SM Promos,Ash's Pikachu - SM109,Promo,Normal,134.99,134.23,71.99,9999.0
+151974,SM Promos,Ash's Pikachu - SM109,Promo,Normal,134.99,134.99,71.99,9999.0
 167078,Best of Promos,Electabuzz - 1 [Winner],Promo,Reverse Holofoil,57.62,796.76,200.0,1202.78
-168358,Deck Exclusives,Porygon-Z - 6/106,Rare,Normal,3.1,2.39,1.2,96.95
-170918,SM - Celestial Storm,Beldum (93),Common,Reverse Holofoil,0.49,0.48,0.2,1.49
-170918,SM - Celestial Storm,Beldum (93),Common,Normal,0.16,0.22,0.04,19.98
+168358,Deck Exclusives,Porygon-Z - 6/106,Rare,Normal,3.1,2.34,1.2,96.95
+170918,SM - Celestial Storm,Beldum (93),Common,Reverse Holofoil,0.49,0.49,0.2,1.49
+170918,SM - Celestial Storm,Beldum (93),Common,Normal,0.15,0.22,0.04,19.98
 174502,Miscellaneous Cards & Products,Treecko - 8/168 (Toys R Us),Promo,Reverse Holofoil,45.2,70.21,33.87,192.9
-175270,Dragon Majesty,Charizard,Holo Rare,Reverse Holofoil,27.55,40.01,20.0,387.14
-175270,Dragon Majesty,Charizard,Holo Rare,Holofoil,15.75,15.8,8.63,299.89
-178854,SM - Lost Thunder,Victini,Rare,Reverse Holofoil,3.0,3.38,1.0,4321.0
+175270,Dragon Majesty,Charizard,Holo Rare,Reverse Holofoil,27.55,105.22,25.0,387.08
+175270,Dragon Majesty,Charizard,Holo Rare,Holofoil,15.94,16.0,8.0,299.89
+178854,SM - Lost Thunder,Victini,Rare,Reverse Holofoil,3.0,3.19,1.0,19.98
 178854,SM - Lost Thunder,Victini,Rare,Normal,0.76,0.75,0.37,19.98
-185254,SM Promos,Detective Pikachu - SM194,Promo,Holofoil,11.85,12.79,6.05,53.74
-186022,Detective Pikachu,Jigglypuff (Holo Common),Common,Holofoil,0.72,0.69,0.1,5.0
-189094,SM - Unbroken Bonds,Wartortle,Uncommon,Normal,0.71,0.7,0.3,18.14
-189094,SM - Unbroken Bonds,Wartortle,Uncommon,Reverse Holofoil,1.61,1.6,0.65,18.64
-194982,SM - Unified Minds,Pikachu (56),Common,Normal,5.87,6.0,2.31,96.91
-194982,SM - Unified Minds,Pikachu (56),Common,Reverse Holofoil,18.63,19.3,9.99,45.0
-197798,Hidden Fates: Shiny Vault,Kartana,Shiny Holo Rare,Holofoil,3.87,3.87,2.0,37.43
+185254,SM Promos,Detective Pikachu - SM194,Promo,Holofoil,11.61,12.93,6.05,53.74
+186022,Detective Pikachu,Jigglypuff (Holo Common),Common,Holofoil,0.71,0.7,0.1,5.0
+189094,SM - Unbroken Bonds,Wartortle,Uncommon,Normal,0.71,0.7,0.3,18.1
+189094,SM - Unbroken Bonds,Wartortle,Uncommon,Reverse Holofoil,1.63,1.62,0.65,18.58
+194982,SM - Unified Minds,Pikachu (56),Common,Normal,5.97,6.0,1.99,96.91
+194982,SM - Unified Minds,Pikachu (56),Common,Reverse Holofoil,18.34,19.98,9.99,45.0
+197798,Hidden Fates: Shiny Vault,Kartana,Shiny Holo Rare,Holofoil,3.87,3.87,2.0,37.41
 199334,SM Promos,Champions Festival - SM148 (World Championships 2018) [Semi-Finalist],Promo,,,,,
 204966,SM Promos,Victini - SM225,Promo,Holofoil,1.63,1.63,0.25,49.98
-208038,SWSH01: Sword & Shield Base Set,Water Energy,Common,Normal,0.28,0.2,0.01,1.49
-208038,SWSH01: Sword & Shield Base Set,Water Energy,Common,Reverse Holofoil,0.47,0.48,0.25,19.98
-208294,SWSH01: Sword & Shield Base Set,Rillaboom (015),Rare,Normal,0.31,0.33,0.19,18.58
-208294,SWSH01: Sword & Shield Base Set,Rillaboom (015),Rare,Reverse Holofoil,0.57,0.59,0.22,19.98
+208038,SWSH01: Sword & Shield Base Set,Water Energy,Common,Normal,0.27,0.2,0.01,1.49
+208038,SWSH01: Sword & Shield Base Set,Water Energy,Common,Reverse Holofoil,0.47,0.49,0.2,19.98
+208294,SWSH01: Sword & Shield Base Set,Rillaboom (015),Rare,Normal,0.3,0.33,0.19,18.52
+208294,SWSH01: Sword & Shield Base Set,Rillaboom (015),Rare,Reverse Holofoil,0.56,0.59,0.18,19.98
 210854,Jumbo Cards,Kabutops - 12/12 (Box Topper),Promo,,,,,
-213158,SWSH02: Rebel Clash,Pincurchin V,Ultra Rare,Holofoil,1.2,1.24,0.5,4.99
+213158,SWSH02: Rebel Clash,Pincurchin V,Ultra Rare,Holofoil,1.2,1.22,0.5,4.99
 216742,Blister Exclusives,Silvally - 184/236 (Cosmos Holo),Promo,Holofoil,2.22,4.99,2.22,37.6
-219046,Battle Academy,Fire Energy (#35 Charizard Stamped),Promo,Normal,0.12,0.21,0.05,19.98
-219302,SWSH03: Darkness Ablaze,Rhyperior V (Full Art),Ultra Rare,Holofoil,2.86,2.99,1.5,31.2
-226470,SWSH04: Vivid Voltage,Shedinja,Rare,Reverse Holofoil,0.63,0.63,0.2,19.98
-226470,SWSH04: Vivid Voltage,Shedinja,Rare,Normal,0.33,0.34,0.1,999.99
+219046,Battle Academy,Fire Energy (#35 Charizard Stamped),Promo,Normal,0.12,0.23,0.05,19.98
+219302,SWSH03: Darkness Ablaze,Rhyperior V (Full Art),Ultra Rare,Holofoil,2.89,2.99,1.5,31.2
+226470,SWSH04: Vivid Voltage,Shedinja,Rare,Reverse Holofoil,0.63,0.62,0.2,19.98
+226470,SWSH04: Vivid Voltage,Shedinja,Rare,Normal,0.34,0.33,0.1,999.99
 232358,Shining Fates,Tropius,Uncommon,Normal,0.08,0.15,0.01,25.08
-232358,Shining Fates,Tropius,Uncommon,Reverse Holofoil,0.12,0.21,0.03,25.13
+232358,Shining Fates,Tropius,Uncommon,Reverse Holofoil,0.1,0.21,0.03,25.13
 232614,Jumbo Cards,Crobat VMAX - SWSH099,Promo,Holofoil,3.96,4.0,1.68,43.6
 232870,Diamond and Pearl Promos,Porygon2 - 49/106 (Prerelease),Promo,Normal,25.02,44.77,37.75,226.9
 234150,SWSH05: Battle Styles,Spearow,Common,Reverse Holofoil,0.26,0.27,0.05,19.98
-234150,SWSH05: Battle Styles,Spearow,Common,Normal,0.11,0.15,0.01,19.98
-235686,Deck Exclusives,Zoroark - 71/114,Promo,Normal,2.58,12.0,1.52,40.5
+234150,SWSH05: Battle Styles,Spearow,Common,Normal,0.11,0.15,0.02,19.98
+235686,Deck Exclusives,Zoroark - 71/114,Promo,Normal,2.62,12.0,1.52,40.5
 241830,SWSH06: Chilling Reign,Expedition Uniform,Uncommon,Normal,0.07,0.15,0.01,999.0
-241830,SWSH06: Chilling Reign,Expedition Uniform,Uncommon,Reverse Holofoil,0.19,0.23,0.02,999.0
-246694,SWSH07: Evolving Skies,Golurk V (Full Art),Ultra Rare,Holofoil,3.78,4.0,2.5,49.99
+241830,SWSH06: Chilling Reign,Expedition Uniform,Uncommon,Reverse Holofoil,0.19,0.24,0.02,999.0
+246694,SWSH07: Evolving Skies,Golurk V (Full Art),Ultra Rare,Holofoil,3.68,3.99,2.5,49.99
 251558,Champion's Path,Code Card - Champion's Path Pin Collection [Turffield Gym],Code Card,Normal,,0.71,0.24,1.2
-253094,SWSH08: Fusion Strike,Phantump,Common,Normal,0.05,0.15,0.01,1000.0
-253094,SWSH08: Fusion Strike,Phantump,Common,Reverse Holofoil,0.23,0.25,0.05,2.99
+253094,SWSH08: Fusion Strike,Phantump,Common,Normal,0.06,0.15,0.01,1000.0
+253094,SWSH08: Fusion Strike,Phantump,Common,Reverse Holofoil,0.25,0.25,0.05,2.99
 253350,SWSH08: Fusion Strike,Gliscor,Uncommon,Reverse Holofoil,0.24,0.25,0.09,19.98
-253350,SWSH08: Fusion Strike,Gliscor,Uncommon,Normal,0.03,0.15,0.01,2.23
-262566,SWSH: Sword & Shield Promo Cards,Leafeon VSTAR - SWSH195,Promo,Holofoil,2.85,3.24,1.99,19.95
-263846,SWSH09: Brilliant Stars,Bibarel,Holo Rare,Reverse Holofoil,0.53,0.54,0.19,19.98
-263846,SWSH09: Brilliant Stars,Bibarel,Holo Rare,Holofoil,0.29,0.33,0.06,501.5
+253350,SWSH08: Fusion Strike,Gliscor,Uncommon,Normal,0.06,0.15,0.01,2.23
+262566,SWSH: Sword & Shield Promo Cards,Leafeon VSTAR - SWSH195,Promo,Holofoil,2.97,3.25,1.99,19.95
+263846,SWSH09: Brilliant Stars,Bibarel,Holo Rare,Reverse Holofoil,0.54,0.54,0.19,19.98
+263846,SWSH09: Brilliant Stars,Bibarel,Holo Rare,Holofoil,0.29,0.33,0.03,501.5
 266406,SM - Burning Shadows,Code Card - Alolan Ninetales GX Challenge Box,Code Card,Normal,0.24,0.24,0.24,0.5
-268710,SWSH: Sword & Shield Promo Cards,Espeon V - SWSH201,Promo,Holofoil,2.94,3.25,1.7,26.72
-272294,SWSH10: Astral Radiance,Hisuian Sneasler,Holo Rare,Reverse Holofoil,0.31,0.35,0.1,19.76
+268710,SWSH: Sword & Shield Promo Cards,Espeon V - SWSH201,Promo,Holofoil,3.07,3.25,1.29,26.72
+272294,SWSH10: Astral Radiance,Hisuian Sneasler,Holo Rare,Reverse Holofoil,0.32,0.35,0.1,19.72
 272294,SWSH10: Astral Radiance,Hisuian Sneasler,Holo Rare,Holofoil,0.33,0.35,0.05,2.0
 276390,Miscellaneous Cards & Products,Melmetal - 129/214 (Unbroken Bonds Stamped),Promo,Holofoil,19.95,26.4,19.95,30.0
 277670,Miscellaneous Cards & Products,Code Card - Infernape V Box,Code Card,Normal,0.09,0.09,0.04,19.98
 280486,XY - Steam Siege,Code Card - Steam Siege Collectible Pin 3 Pack Blister [Volcanion],Code Card,,,,,
-284070,SWSH11: Lost Origin,Aipom,Common,Normal,0.18,0.19,0.01,20.0
+284070,SWSH11: Lost Origin,Aipom,Common,Normal,0.2,0.19,0.01,20.0
 284070,SWSH11: Lost Origin,Aipom,Common,Reverse Holofoil,0.28,0.28,0.09,19.98
-451750,SWSH12: Silver Tempest,Armaldo,Rare,Normal,0.27,0.26,0.05,30.0
-451750,SWSH12: Silver Tempest,Armaldo,Rare,Reverse Holofoil,0.39,0.4,0.17,2.5
+451750,SWSH12: Silver Tempest,Armaldo,Rare,Normal,0.28,0.27,0.05,30.0
+451750,SWSH12: Silver Tempest,Armaldo,Rare,Reverse Holofoil,0.4,0.4,0.17,2.5
 476070,Prize Pack Series Cards,Rayquaza VMAX - 111/203,Ultra Rare,Holofoil,289.32,600.0,550.0,600.0
-477606,World Championship Decks,Cursed Stone - 2006 (Jason Klaczynski),Uncommon,Normal,3.21,2.54,2.2,46.8
-478118,SWSH: Crown Zenith,Friends in Hisui (Full Art),Ultra Rare,Holofoil,6.95,7.18,5.0,999.0
+477606,World Championship Decks,Cursed Stone - 2006 (Jason Klaczynski),Uncommon,Normal,3.21,2.54,1.5,46.8
+478118,SWSH: Crown Zenith,Friends in Hisui (Full Art),Ultra Rare,Holofoil,6.63,7.17,5.0,999.0
 479910,World Championship Decks,Lucario GL - 2009 (Tsubasa Nakamura),Rare,Normal,31.73,349.99,75.99,410.0
-480934,World Championship Decks,Prism Energy - 2014 (Haruto Kobayashi),Uncommon,Normal,1.58,1.51,0.79,27.8
-481958,World Championship Decks,Field Blower - 2018 (Magnus Pedersen),Uncommon,Normal,2.05,1.78,0.79,3.0
+480934,World Championship Decks,Prism Energy - 2014 (Haruto Kobayashi),Uncommon,Normal,1.58,1.5,0.79,27.8
+481958,World Championship Decks,Field Blower - 2018 (Magnus Pedersen),Uncommon,Normal,2.05,2.05,0.79,3.0
 485030,World Championship Decks,Training Court - 2022 (Rikuto Ohashi),Uncommon,Normal,0.99,0.99,0.8,19.98
-487846,SV01: Scarlet & Violet Base Set,Floragato,Uncommon,Normal,0.16,0.17,0.01,19.98
-487846,SV01: Scarlet & Violet Base Set,Floragato,Uncommon,Reverse Holofoil,0.25,0.27,0.08,40.0
-488102,SV01: Scarlet & Violet Base Set,Switch,Common,Normal,0.24,0.23,0.01,25.0
-488102,SV01: Scarlet & Violet Base Set,Switch,Common,Reverse Holofoil,0.22,0.25,0.08,19.98
-497574,SV02: Paldea Evolved,Dunsparce,Common,Normal,0.26,0.25,0.01,1000.0
-497574,SV02: Paldea Evolved,Dunsparce,Common,Reverse Holofoil,0.27,0.29,0.05,19.98
+487846,SV01: Scarlet & Violet Base Set,Floragato,Uncommon,Normal,0.14,0.17,0.01,19.98
+487846,SV01: Scarlet & Violet Base Set,Floragato,Uncommon,Reverse Holofoil,0.25,0.26,0.08,40.0
+488102,SV01: Scarlet & Violet Base Set,Switch,Common,Normal,0.21,0.23,0.01,25.0
+488102,SV01: Scarlet & Violet Base Set,Switch,Common,Reverse Holofoil,0.21,0.25,0.05,19.98
+497574,SV02: Paldea Evolved,Dunsparce,Common,Normal,0.27,0.26,0.01,1000.0
+497574,SV02: Paldea Evolved,Dunsparce,Common,Reverse Holofoil,0.29,0.29,0.05,19.98
 499366,Professor Program Promos,Gym Trainer (2022),Promo,Reverse Holofoil,13.51,12.73,10.0,23.0
 509862,SV03: Obsidian Flames,Bellibolt - 078/197,Uncommon,Reverse Holofoil,0.28,0.28,0.1,19.98
-509862,SV03: Obsidian Flames,Bellibolt - 078/197,Uncommon,Normal,0.17,0.2,0.02,20.0
-516006,SV: Scarlet & Violet 151,Nidoran M,Common,Reverse Holofoil,2.68,2.81,1.19,7.0
-516006,SV: Scarlet & Violet 151,Nidoran M,Common,Normal,0.3,0.26,0.06,20.0
-516518,McDonald's Promos 2023,Pawmi,Promo,Normal,0.2,0.25,0.09,19.98
-517030,SV: Scarlet & Violet 151,Ninetales ex - 186/165,Ultra Rare,Holofoil,14.78,16.99,11.99,182.14
-523942,SV04: Paradox Rift,Iron Valiant ex - 261/182,Hyper Rare,Holofoil,5.15,6.26,4.0,19.95
-528038,SV: Paldean Fates,Paldean Fates Booster Pack,,Normal,23.69,25.5,19.99,197.5
+509862,SV03: Obsidian Flames,Bellibolt - 078/197,Uncommon,Normal,0.2,0.2,0.02,20.0
+516006,SV: Scarlet & Violet 151,Nidoran M,Common,Reverse Holofoil,2.78,2.88,1.19,7.0
+516006,SV: Scarlet & Violet 151,Nidoran M,Common,Normal,0.28,0.26,0.06,20.0
+516518,McDonald's Promos 2023,Pawmi,Promo,Normal,0.2,0.24,0.09,19.98
+517030,SV: Scarlet & Violet 151,Ninetales ex - 186/165,Ultra Rare,Holofoil,14.46,16.87,11.25,182.14
+523942,SV04: Paradox Rift,Iron Valiant ex - 261/182,Hyper Rare,Holofoil,5.02,6.1,4.0,19.95
+528038,SV: Paldean Fates,Paldean Fates Booster Pack,,Normal,23.76,25.1,19.99,197.5
 534182,SV: Paldean Fates,Dedenne,Common,Normal,0.14,0.15,0.01,1000.0
-534182,SV: Paldean Fates,Dedenne,Common,Reverse Holofoil,0.18,0.2,0.01,19.98
-534438,SV: Paldean Fates,Artazon,Uncommon,Normal,0.24,0.24,0.01,2.37
-534438,SV: Paldean Fates,Artazon,Uncommon,Reverse Holofoil,0.32,0.32,0.1,18.82
-534694,SV: Paldean Fates,Flittle - 164/091,Shiny Rare,Holofoil,2.57,2.57,1.25,4319.53
-542886,SV05: Temporal Forces,Deerling - 165/162,Illustration Rare,Holofoil,45.47,48.23,37.99,2000.0
-550054,SV06: Twilight Masquerade,Illumise,Common,Normal,0.19,0.19,0.01,1000.0
+534182,SV: Paldean Fates,Dedenne,Common,Reverse Holofoil,0.18,0.21,0.01,19.98
+534438,SV: Paldean Fates,Artazon,Uncommon,Normal,0.23,0.24,0.01,2.37
+534438,SV: Paldean Fates,Artazon,Uncommon,Reverse Holofoil,0.34,0.32,0.1,18.76
+534694,SV: Paldean Fates,Flittle - 164/091,Shiny Rare,Holofoil,2.61,2.57,1.25,4319.47
+542886,SV05: Temporal Forces,Deerling - 165/162,Illustration Rare,Holofoil,45.24,48.05,37.99,2000.0
+550054,SV06: Twilight Masquerade,Illumise,Common,Normal,0.18,0.19,0.01,1000.0
 550054,SV06: Twilight Masquerade,Illumise,Common,Reverse Holofoil,0.25,0.25,0.05,999.0
 550822,SV05: Temporal Forces,Temporal Forces Pokemon Center Elite Trainer Box Case (Exclusive) [Iron Leaves],,Normal,,1348.0,1347.99,1499.0
 564134,Trick or Trade BOOster Bundle 2023,Trick or Trade BOOster Bundle 2023 (120 ct),,Normal,133.33,237.94,237.94,237.94
-585126,SV: Scarlet & Violet Promo Cards,Tinkaton - 140 (Cosmo Holo),Promo,Holofoil,1.35,1.35,0.64,19.98
-589990,SV08: Surging Sparks,Lisia's Appeal - 246/191,Special Illustration Rare,Holofoil,29.77,32.07,24.0,269.9
-610470,SV: Prismatic Evolutions,Larry's Skill - 115/131,Common,Reverse Holofoil,0.22,0.22,0.01,999.0
-610470,SV: Prismatic Evolutions,Larry's Skill - 115/131,Common,Normal,0.15,0.18,0.01,999.0
-619174,Prize Pack Series Cards,Unfair Stamp - 165/167,ACE SPEC Rare,Holofoil,55.19,66.25,48.16,1013.1
-623014,Miscellaneous Cards & Products,Rival Battle Deck [Marnie],,Normal,52.98,58.92,50.0,99.99
-623526,SV09: Journey Together,Pangoro,Uncommon,Normal,0.07,0.15,0.01,19.98
-623526,SV09: Journey Together,Pangoro,Uncommon,Reverse Holofoil,0.29,0.25,0.01,40.0
+585126,SV: Scarlet & Violet Promo Cards,Tinkaton - 140 (Cosmo Holo),Promo,Holofoil,1.39,1.36,0.64,19.98
+589990,SV08: Surging Sparks,Lisia's Appeal - 246/191,Special Illustration Rare,Holofoil,29.56,32.54,24.0,269.9
+610470,SV: Prismatic Evolutions,Larry's Skill - 115/131,Common,Reverse Holofoil,0.23,0.22,0.03,999.0
+610470,SV: Prismatic Evolutions,Larry's Skill - 115/131,Common,Normal,0.16,0.18,0.01,999.0
+619174,Prize Pack Series Cards,Unfair Stamp - 165/167,ACE SPEC Rare,Holofoil,55.19,65.67,47.17,1013.1
+623014,Miscellaneous Cards & Products,Rival Battle Deck [Marnie],,Normal,53.64,57.94,50.0,99.99
+623526,SV09: Journey Together,Pangoro,Uncommon,Normal,0.08,0.15,0.01,19.98
+623526,SV09: Journey Together,Pangoro,Uncommon,Reverse Holofoil,0.31,0.26,0.01,40.0
 630438,SV: Black Bolt,Unova Mini Tin [Garbodor & Amoonguss],,Normal,24.11,99.0,99.0,99.0
-630694,SV: White Flare,White Flare  Binder Collection Case,,Normal,295.83,594.19,594.19,594.19
-632998,SV10: Destined Rivals,Team Rocket's Orbeetle - 198/182,Illustration Rare,Holofoil,3.55,4.47,2.25,42.62
+630694,SV: White Flare,White Flare  Binder Collection Case,,Normal,299.4,594.19,594.19,594.19
+632998,SV10: Destined Rivals,Team Rocket's Orbeetle - 198/182,Illustration Rare,Holofoil,3.54,4.47,2.4,42.56
 637606,World Championship Decks,Basic Fire Energy - 2024 (Evan Pavelski),Common,Normal,0.33,0.34,0.25,19.98
-642214,SV: White Flare,Pansear - 099/086,Illustration Rare,Holofoil,15.72,18.08,13.63,88.0
-642470,SV: Black Bolt,Simipour,Uncommon,Reverse Holofoil,0.2,0.23,0.05,19.98
-642470,SV: Black Bolt,Simipour,Uncommon,Normal,0.05,0.15,0.01,19.98
-642726,SV: Black Bolt,Emolga (Poke Ball Pattern),Common,Holofoil,0.59,0.61,0.3,19.98
-645286,SVE: Scarlet & Violet Energies,Basic Grass Energy - 017,Common,Reverse Holofoil,0.28,0.27,0.05,19.98
+642214,SV: White Flare,Pansear - 099/086,Illustration Rare,Holofoil,15.62,17.88,15.0,88.0
+642470,SV: Black Bolt,Simipour,Uncommon,Reverse Holofoil,0.18,0.23,0.05,19.98
+642470,SV: Black Bolt,Simipour,Uncommon,Normal,0.07,0.15,0.01,19.98
+642726,SV: Black Bolt,Emolga (Poke Ball Pattern),Common,Holofoil,0.59,0.63,0.25,19.98
+645286,SVE: Scarlet & Violet Energies,Basic Grass Energy - 017,Common,Reverse Holofoil,0.27,0.27,0.05,19.98
 645286,SVE: Scarlet & Violet Energies,Basic Grass Energy - 017,Common,Normal,0.18,0.19,0.01,19.98
-654502,ME01: Mega Evolution,Mega Latias ex - 163/132,Ultra Rare,Holofoil,4.63,5.15,1.0,999.0
-662182,ME02: Phantasmal Flames,Mega Charizard X ex - 013/094,Double Rare,Holofoil,4.61,5.05,3.14,5401.25
+654502,ME01: Mega Evolution,Mega Latias ex - 163/132,Ultra Rare,Holofoil,4.5,5.13,1.0,999.0
+662182,ME02: Phantasmal Flames,Mega Charizard X ex - 013/094,Double Rare,Holofoil,4.23,5.03,2.95,999.0
 676006,ME: Ascended Heroes,Mystery Garden,Uncommon,Normal,0.17,0.2,0.01,19.98
-676006,ME: Ascended Heroes,Mystery Garden,Uncommon,Reverse Holofoil,0.26,0.29,0.12,19.98
-677030,ME: Ascended Heroes,Snorunt - 046/217 (Energy Symbol Pattern),Common,Reverse Holofoil,0.21,0.26,0.08,19.98
-684454,ME04: Chaos Rising,Chaos Rising Build & Battle Box,,Normal,39.35,50.0,37.49,60.9
-694694,ME: Mega Evolution Promo,Fennekin - 080,Promo,Holofoil,3.09,4.11,2.0,75.0
-696742,World Championship Decks,Basic Fighting Energy - 2025 (Yuya Okita),None,Normal,0.87,0.91,0.85,1.0
-704422,Prize Pack Series Cards,Growing Grass Energy - 086/088 (Cosmos Holo),Rare,Holofoil,1.8,1.88,1.75,2.0
+676006,ME: Ascended Heroes,Mystery Garden,Uncommon,Reverse Holofoil,0.25,0.29,0.12,19.98
+677030,ME: Ascended Heroes,Snorunt - 046/217 (Energy Symbol Pattern),Common,Reverse Holofoil,0.25,0.25,0.08,19.98
+684454,ME04: Chaos Rising,Chaos Rising Build & Battle Box,,Normal,41.88,51.99,37.49,60.9
+694694,ME: Mega Evolution Promo,Fennekin - 080,Promo,Holofoil,3.55,4.11,2.07,25.77
+696742,World Championship Decks,Basic Fighting Energy - 2025 (Yuya Okita),None,Normal,0.87,0.91,0.8,1.0
+704422,Prize Pack Series Cards,Growing Grass Energy - 086/088 (Cosmos Holo),Rare,Holofoil,1.79,1.89,1.75,2.0
