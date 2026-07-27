@@ -1,4 +1,5 @@
 export type CardSample = {
+  cardKey?: string;
   productId: number;
   title: string;
   name: string;
@@ -15,6 +16,8 @@ export type CardSample = {
 export type RenderCommand = {
   type: 'text';
   value: string;
+  valueFrom?: string;
+  fallback?: string;
   x: number;
   y: number;
   font: 0 | 1 | 2;

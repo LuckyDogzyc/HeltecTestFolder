@@ -111,17 +111,17 @@ def fetch_products_and_prices(category_id: int, group_id: int, session: requests
     return products, prices
 
 
-def extract_rarity(extended_data: List[Dict]) -> str:
-    """Extract rarity from a product's extendedData.
+def extract_extended_value(extended_data: List[Dict], key: str) -> str:
+    """Extract a named value from a product's extendedData.
 
     Args:
         extended_data: List of dictionaries from the product's extendedData field.
 
     Returns:
-        The rarity value if present; otherwise an empty string.
+        The value if present; otherwise an empty string.
     """
     for entry in extended_data:
-        if entry.get("name") == "Rarity":
+        if entry.get("name") == key:
             return entry.get("value", "").strip()
     return ""
 
@@ -163,7 +163,9 @@ def merge_data(groups: List[Dict], category_id: int, session: requests.Session,
         for product in products:
             pid = product.get("productId")
             name = product.get("name", "").strip()
-            rarity = extract_rarity(product.get("extendedData", []))
+            extended_data = product.get("extendedData", [])
+            rarity = extract_extended_value(extended_data, "Rarity")
+            card_number = extract_extended_value(extended_data, "Number")
 
             # Find any price entries matching this product
             # Prices may exist for multiple subtypes (Normal, Holofoil, etc.)
@@ -175,6 +177,7 @@ def merge_data(groups: List[Dict], category_id: int, session: requests.Session,
                         set_name,
                         name,
                         rarity,
+                        card_number,
                         subtype,
                         price_entry.get("marketPrice", ""),
                         price_entry.get("midPrice", ""),
@@ -189,6 +192,7 @@ def merge_data(groups: List[Dict], category_id: int, session: requests.Session,
                     set_name,
                     name,
                     rarity,
+                    card_number,
                     "",
                     "",
                     "",
@@ -202,6 +206,8 @@ def merge_data(groups: List[Dict], category_id: int, session: requests.Session,
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download Pokémon card data from TCGCSV JSON endpoints")
     parser.add_argument("--output", required=True, help="Output CSV file path")
+    parser.add_argument("--category-id", type=int, default=3,
+                        help="TCGplayer category ID (3=Pokemon US, 85=Pokemon Japan)")
     parser.add_argument("--sleep", type=float, default=0.1,
                         help="Seconds to sleep between requests (default: 0.1)")
     args = parser.parse_args()
@@ -217,7 +223,7 @@ def main() -> None:
     })
 
     try:
-        groups = fetch_groups(3, session, args.sleep)
+        groups = fetch_groups(args.category_id, session, args.sleep)
     except requests.RequestException as e:
         print(f"Failed to fetch group list: {e}", file=sys.stderr)
         sys.exit(1)
@@ -229,13 +235,14 @@ def main() -> None:
             "setName",
             "productName",
             "rarity",
+            "cardNumber",
             "subTypeName",
             "marketPrice",
             "midPrice",
             "lowPrice",
             "highPrice"
         ])
-        merge_data(groups, 3, session, args.sleep, writer)
+        merge_data(groups, args.category_id, session, args.sleep, writer)
 
     print(f"Finished writing data to {output_path}")
 

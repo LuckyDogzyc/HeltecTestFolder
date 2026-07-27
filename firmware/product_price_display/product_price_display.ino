@@ -79,6 +79,7 @@ GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
 struct CardPrice {
   bool found = false;
   long productId = 0;
+  String cardKey;
   String setName;
   String productName;
   String rarity;
@@ -129,6 +130,8 @@ struct RenderCommand {
   uint8_t font;
   uint8_t color;
   String value; // e.g. "{title}", "${market}", "ID {productId}"
+  String valueFrom; // e.g. "price.label" or "card.localizedName"
+  String fallback;  // pipe-separated paths, e.g. "card.localizedName|card.name"
 };
 RenderCommand renderProgram[RENDER_CMD_MAX];
 int renderProgramCount = 0;
@@ -158,9 +161,13 @@ String deviceId;
 String deviceKey;
 int serverConfigVersion = 0;
 String serverTemplateId;
+String selectedCardKey;
+String selectedSourceId;
+String selectedDataUrl;
 uint32_t lastServerHeartbeatMs = 0;
 String lastServerError;
 int lastServerHttpStatus = 0;
+String lastDataJson;
 
 static void setStage(const String& stage) {
   lastStage = stage;
@@ -201,6 +208,9 @@ static void loadConfig() {
   deviceKey = prefs.getString("devKey", "");
   serverConfigVersion = prefs.getInt("srvVer", 0);
   serverTemplateId = prefs.getString("srvTpl", "");
+  selectedCardKey = prefs.getString("cardKey", "");
+  selectedSourceId = prefs.getString("srcId", "");
+  selectedDataUrl = prefs.getString("dataUrl", "");
   loadLayoutConfig();
   loadRenderProgramConfig();
   if (savedSsid == "你的WiFi") savedSsid = "";
@@ -250,6 +260,8 @@ static void loadRenderProgramConfig() {
     renderProgram[i].font = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "f").c_str(), 0), 0, 2);
     renderProgram[i].color = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "c").c_str(), 0), 0, 1);
     renderProgram[i].value = prefs.getString((String("rp") + i + "t").c_str(), "");
+    renderProgram[i].valueFrom = prefs.getString((String("rp") + i + "vf").c_str(), "");
+    renderProgram[i].fallback = prefs.getString((String("rp") + i + "fb").c_str(), "");
   }
 }
 
@@ -261,7 +273,9 @@ static void saveRenderProgramConfig() {
     prefs.putUChar((String("rp") + i + "y").c_str(), renderProgram[i].y);
     prefs.putUChar((String("rp") + i + "f").c_str(), renderProgram[i].font);
     prefs.putUChar((String("rp") + i + "c").c_str(), renderProgram[i].color);
-    prefs.putString((String("rp") + i + "t").c_str(), renderProgram[i].value.substring(0, 48));
+    prefs.putString((String("rp") + i + "t").c_str(), renderProgram[i].value.substring(0, 96));
+    prefs.putString((String("rp") + i + "vf").c_str(), renderProgram[i].valueFrom.substring(0, 48));
+    prefs.putString((String("rp") + i + "fb").c_str(), renderProgram[i].fallback.substring(0, 96));
   }
 }
 
@@ -686,11 +700,19 @@ static String applyRenderPlaceholders(String value, const CardPrice& card) {
   return value;
 }
 
+static String jsonValueAtPath(const String& json, const String& path);
+static String firstJsonPathValue(const String& json, const String& paths);
+
 static void drawRenderProgram(const CardPrice& card) {
   for (int i = 0; i < renderProgramCount; ++i) {
     const RenderCommand& item = renderProgram[i];
-    if (!item.visible || !item.value.length()) continue;
-    String value = fitTextToSlot(applyRenderPlaceholders(item.value, card), item.font, item.x);
+    if (!item.visible) continue;
+    String value;
+    if (item.valueFrom.length() && lastDataJson.length()) value = jsonValueAtPath(lastDataJson, item.valueFrom);
+    if (!value.length() && item.fallback.length() && lastDataJson.length()) value = firstJsonPathValue(lastDataJson, item.fallback);
+    if (!value.length()) value = item.value;
+    if (!value.length()) continue;
+    value = fitTextToSlot(applyRenderPlaceholders(value, card), item.font, item.x);
     if (!value.length()) continue;
     display.setFont(layoutFont(item.font));
     display.setTextColor(layoutColor(item.color));
@@ -791,6 +813,59 @@ static bool jsonBoolField(const String& json, const String& key, bool def, int f
   return def;
 }
 
+static int jsonClosingIndex(const String& json, int start, char openCh, char closeCh);
+
+static String jsonValueAtPath(const String& json, const String& path) {
+  int start = 0;
+  int dot = -1;
+  String current = json;
+  String remaining = path;
+  while (true) {
+    dot = remaining.indexOf('.');
+    String key = dot >= 0 ? remaining.substring(0, dot) : remaining;
+    if (!key.length()) return "";
+    String quoted = jsonStringField(current, key);
+    if (dot < 0) {
+      if (quoted.length()) return quoted;
+      String needle = String("\"") + key + "\":";
+      int p = current.indexOf(needle);
+      if (p < 0) return "";
+      p += needle.length();
+      while (p < (int)current.length() && current[p] == ' ') ++p;
+      int e = p;
+      while (e < (int)current.length() && current[e] != ',' && current[e] != '}' && current[e] != ']') ++e;
+      String raw = current.substring(p, e);
+      raw.trim();
+      if (raw == "null") return "";
+      return raw;
+    }
+    String needle = String("\"") + key + "\":";
+    int p = current.indexOf(needle);
+    if (p < 0) return "";
+    p += needle.length();
+    while (p < (int)current.length() && current[p] == ' ') ++p;
+    if (p >= (int)current.length() || current[p] != '{') return "";
+    int close = jsonClosingIndex(current, p, '{', '}');
+    if (close < 0) return "";
+    current = current.substring(p, close + 1);
+    remaining = remaining.substring(dot + 1);
+  }
+}
+
+static String firstJsonPathValue(const String& json, const String& paths) {
+  int start = 0;
+  while (start < (int)paths.length()) {
+    int sep = paths.indexOf('|', start);
+    String path = sep >= 0 ? paths.substring(start, sep) : paths.substring(start);
+    path.trim();
+    String value = jsonValueAtPath(json, path);
+    if (value.length()) return value;
+    if (sep < 0) break;
+    start = sep + 1;
+  }
+  return "";
+}
+
 static int jsonClosingIndex(const String& json, int start, char openCh, char closeCh) {
   if (start < 0 || start >= (int)json.length() || json[start] != openCh) return -1;
   bool inString = false;
@@ -817,6 +892,9 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
 static bool applyServerConfigJson(const String& body) {
   int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
   long newProductId = jsonIntField(body, "productId", selectedProductId);
+  String newCardKey = jsonStringField(body, "cardKey");
+  String newSourceId = jsonStringField(body, "sourceId");
+  String newDataUrl = jsonStringField(body, "dataUrl");
   String newTemplateId = jsonStringField(body, "templateId");
   int rp = body.indexOf("\"renderProgram\"");
   if (rp < 0) { lastServerError = "No renderProgram"; return false; }
@@ -833,13 +911,17 @@ static bool applyServerConfigJson(const String& body) {
     String obj = body.substring(os, oe + 1);
     String type = jsonStringField(obj, "type");
     String value = jsonStringField(obj, "value");
-    if (type == "text" && value.length()) {
+    String valueFrom = jsonStringField(obj, "valueFrom");
+    String fallback = jsonStringField(obj, "fallback");
+    if (type == "text" && (value.length() || valueFrom.length())) {
       renderProgram[count].visible = jsonBoolField(obj, "visible", true);
       renderProgram[count].x = (uint8_t)constrain(jsonIntField(obj, "x", 0), 0, 249);
       renderProgram[count].y = (uint8_t)constrain(jsonIntField(obj, "y", 0), 0, 121);
       renderProgram[count].font = (uint8_t)constrain(jsonIntField(obj, "font", 0), 0, 2);
       renderProgram[count].color = (uint8_t)constrain(jsonIntField(obj, "color", 0), 0, 1);
-      renderProgram[count].value = value.substring(0, 48);
+      renderProgram[count].value = value.substring(0, 96);
+      renderProgram[count].valueFrom = valueFrom.substring(0, 48);
+      renderProgram[count].fallback = fallback.substring(0, 96);
       ++count;
     }
     pos = oe + 1;
@@ -847,16 +929,22 @@ static bool applyServerConfigJson(const String& body) {
   if (count <= 0) { lastServerError = "No text commands"; return false; }
   renderProgramCount = count;
   selectedProductId = newProductId;
+  selectedCardKey = newCardKey;
+  selectedSourceId = newSourceId;
+  selectedDataUrl = newDataUrl;
   selectedTemplate = 4;
   serverConfigVersion = newVersion;
   serverTemplateId = newTemplateId.length() ? newTemplateId : "server";
   prefs.putLong("productId", selectedProductId);
+  prefs.putString("cardKey", selectedCardKey);
+  prefs.putString("srcId", selectedSourceId);
+  prefs.putString("dataUrl", selectedDataUrl);
   prefs.putInt("template", selectedTemplate);
   prefs.putInt("srvVer", serverConfigVersion);
   prefs.putString("srvTpl", serverTemplateId);
   saveRenderProgramConfig();
   lastServerError = "";
-  Serial.printf("Applied server config v%d productId=%ld commands=%d template=%s\n", serverConfigVersion, selectedProductId, renderProgramCount, serverTemplateId.c_str());
+  Serial.printf("Applied server config v%d cardKey=%s dataUrl=%s commands=%d template=%s\n", serverConfigVersion, selectedCardKey.c_str(), selectedDataUrl.c_str(), renderProgramCount, serverTemplateId.c_str());
   return true;
 }
 
@@ -928,6 +1016,61 @@ static bool pollServerConfig() {
   return applyServerConfigJson(body);
 }
 
+static bool fetchSelectedCardFromDataUrl(CardPrice& card) {
+  card = CardPrice();
+  if (!selectedDataUrl.startsWith("http://") && !selectedDataUrl.startsWith("https://")) return false;
+  if (WiFi.status() != WL_CONNECTED) {
+    lastError = "No WiFi";
+    return false;
+  }
+  setStage("http-dataurl-begin");
+  HTTPClient http;
+  WiFiClient client;
+  WiFiClientSecure secureClient;
+  if (!httpBeginAny(http, client, secureClient, selectedDataUrl)) {
+    lastError = "DataUrl begin failed";
+    lastHttpStatus = -1;
+    return false;
+  }
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setConnectTimeout(8000);
+  http.setTimeout(15000);
+  http.addHeader("User-Agent", "LuckyDog-ESP32-ProductPriceDisplay/2.0");
+  int code = http.GET();
+  lastHttpStatus = code;
+  lastHttpError = code < 0 ? http.errorToString(code) : "";
+  if (code != HTTP_CODE_OK) {
+    lastError = code < 0 ? String("HTTP ") + code + " " + lastHttpError : String("HTTP ") + code;
+    http.end();
+    return false;
+  }
+  lastDataJson = http.getString();
+  http.end();
+  if (jsonValueAtPath(lastDataJson, "status") != "ok") {
+    lastError = "Data status not ok";
+    return false;
+  }
+  card.found = true;
+  card.productId = selectedProductId;
+  card.cardKey = jsonValueAtPath(lastDataJson, "card.cardKey");
+  if (!card.cardKey.length()) card.cardKey = selectedCardKey;
+  card.productName = firstJsonPathValue(lastDataJson, "card.localizedName|card.name");
+  card.setName = jsonValueAtPath(lastDataJson, "card.setName");
+  card.rarity = jsonValueAtPath(lastDataJson, "card.rarity");
+  card.subTypeName = jsonValueAtPath(lastDataJson, "card.variant");
+  card.marketPrice = jsonValueAtPath(lastDataJson, "price.amount");
+  card.lowPrice = jsonValueAtPath(lastDataJson, "price.low");
+  card.midPrice = "--";
+  card.highPrice = "--";
+  String label = jsonValueAtPath(lastDataJson, "price.label");
+  if (label.startsWith("$")) label.remove(0, 1);
+  if (label.length()) card.marketPrice = label;
+  if (!card.lowPrice.length()) card.lowPrice = card.marketPrice;
+  lastError = "";
+  Serial.printf("Fetched dataUrl cardKey=%s name=%s price=%s\n", card.cardKey.c_str(), card.productName.c_str(), card.marketPrice.c_str());
+  return true;
+}
+
 static bool refreshCardAndScreen(bool drawEvenIfFail) {
   if (refreshInProgress) {
     lastError = "Refresh already running";
@@ -942,7 +1085,8 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     connectWiFiWithFeedback(savedSsid, savedPass, 15000);
   }
   if (WiFi.status() == WL_CONNECTED) {
-    ok = fetchSelectedCardFromBucket(currentCard);
+    ok = fetchSelectedCardFromDataUrl(currentCard);
+    if (!ok) ok = fetchSelectedCardFromBucket(currentCard);
   } else {
     lastError = "No WiFi";
   }

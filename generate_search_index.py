@@ -36,10 +36,11 @@ def text(value: str) -> str:
 
 
 def normalize(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value or "")
+    value = unicodedata.normalize("NFKC", value or "")
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = value.lower()
-    value = re.sub(r"[^a-z0-9]+", " ", value)
+    # Keep Unicode letters/numbers so Chinese and Japanese aliases are searchable.
+    value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
     return re.sub(r"\s+", " ", value).strip()
 
 
@@ -49,7 +50,24 @@ def card_number(name: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def generate(input_path: Path, output_path: Path, limit: int = 0) -> Dict[str, Any]:
+def load_aliases(path: Optional[Path]) -> Dict[str, List[str]]:
+    if not path or not path.exists():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {normalize(k): [str(v) for v in values] for k, values in raw.items()}
+
+
+def aliases_for(name: str, aliases: Dict[str, List[str]]) -> List[str]:
+    normalized_name = normalize(name.split(" - ")[0])
+    hits: List[str] = []
+    for canonical, values in aliases.items():
+        if canonical and re.search(rf"\b{re.escape(canonical)}\b", normalized_name):
+            hits.extend(values)
+    return hits
+
+
+def generate(input_path: Path, output_path: Path, limit: int = 0, aliases_path: Optional[Path] = None) -> Dict[str, Any]:
+    aliases = load_aliases(aliases_path)
     cards: List[Dict[str, Any]] = []
     total = 0
     with input_path.open("r", newline="", encoding="utf-8") as f:
@@ -63,8 +81,11 @@ def generate(input_path: Path, output_path: Path, limit: int = 0) -> Dict[str, A
             set_name = text(row.get("setName", ""))
             rarity = text(row.get("rarity", ""))
             subtype = text(row.get("subTypeName", ""))
-            num = card_number(name) or ""
-            search = normalize(" ".join([product_id, name, set_name, rarity, subtype, num]))
+            num = text(row.get("cardNumber", "")) or card_number(name) or ""
+            # Product IDs are internal identifiers; customer search should rely on
+            # visible facts: name, set/series, rarity, variant, and card number.
+            alias_terms = aliases_for(name, aliases)
+            search = normalize(" ".join([name, set_name, rarity, subtype, num, *alias_terms]))
             card = {
                 "id": int(product_id),
                 "n": name,
@@ -85,7 +106,8 @@ def generate(input_path: Path, output_path: Path, limit: int = 0) -> Dict[str, A
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "totalRows": total,
         "cardsIncluded": len(cards),
-        "searchFields": {"id": "productId", "n": "name", "s": "setName", "r": "rarity", "t": "subTypeName", "num": "cardNumber", "m": "marketPrice", "l": "lowPrice", "q": "normalizedSearchText"},
+        "aliasesLoaded": sum(len(v) for v in aliases.values()),
+        "searchFields": {"id": "internalProductId", "n": "name", "s": "setName", "r": "rarity", "t": "subTypeName", "num": "cardNumber", "m": "marketPrice", "l": "lowPrice", "q": "normalizedSearchText"},
         "cards": cards,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,8 +120,9 @@ def main() -> None:
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--limit", type=int, default=0, help="Optional max rows for tests; 0 = all")
+    parser.add_argument("--aliases", help="Optional JSON map of canonical names to multilingual aliases")
     args = parser.parse_args()
-    payload = generate(Path(args.input), Path(args.output), args.limit)
+    payload = generate(Path(args.input), Path(args.output), args.limit, Path(args.aliases) if args.aliases else None)
     print(f"Wrote {args.output}: {payload['cardsIncluded']} cards from {payload['totalRows']} rows")
 
 

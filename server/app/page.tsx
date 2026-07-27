@@ -4,14 +4,20 @@ import { useMemo, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms } from '@/lib/templates';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
-type CardSearchRow = { id: number; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
+type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
 type LanDevice = { ip: string; name: string; deviceId: string; status: any };
 const PAGE_SIZE = 8;
+
+function cardVariantKey(card?: CardSearchRow) {
+  if (!card) return '';
+  return card.cardKey;
+}
 
 function toPreviewCard(card?: CardSearchRow): CardSample {
   if (!card) return sampleCard;
   return {
-    productId: card.id,
+    productId: 0,
+    cardKey: card.cardKey,
     title: normalizeTitle(card.n || sampleCard.name),
     name: card.n || sampleCard.name,
     set: card.s || sampleCard.set,
@@ -60,7 +66,12 @@ function EpaperPreview({ program, card, editable, onChange }: { program: RenderC
               onPointerDown={(ev) => beginDrag(originalIndex, ev)}
               onClick={() => setSelected(originalIndex)}
               className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${editable && selected === originalIndex ? 'selected' : ''}`}
-              style={{ left: item.x * scale, top: item.y * scale - 14, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+              style={{
+                left: item.x * scale,
+                top: (item.y - (item.font === 2 ? 19 : 14)) * scale,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left'
+              }}
             >
               {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x)}
             </div>
@@ -120,7 +131,8 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 export default function Page() {
   const [templateId, setTemplateId] = useState('price');
   const [program, setProgram] = useState<RenderCommand[]>(templatePrograms.price.map((x) => ({ ...x })));
-  const [q, setQ] = useState('greninja');
+  const [q, setQ] = useState('');
+  const [cardMarket, setCardMarket] = useState('pokemon-us');
   const [cards, setCards] = useState<CardSearchRow[]>([]);
   const [selectedCard, setSelectedCard] = useState<CardSearchRow | undefined>();
   const [page, setPage] = useState(1);
@@ -139,11 +151,18 @@ export default function Page() {
   }
 
   async function searchCards(nextPage = 1) {
-    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`);
+    const query = q.trim();
+    if (!query) {
+      setCards([]);
+      setSelectedCard(undefined);
+      setPage(1);
+      return setMessage('请输入卡名、系列或卡牌编号后再搜索');
+    }
+    const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}&market=${encodeURIComponent(cardMarket)}`);
     const data = await res.json();
     setCards(data.cards || []);
     setPage(nextPage);
-    setMessage(`找到 ${data.cards?.length || 0} 张卡，选择一张后点“更新设备显示”`);
+    setMessage(`找到 ${data.cards?.length || 0} 张卡，已按相关性和价格排序`);
   }
 
   function useCard(card: CardSearchRow) {
@@ -188,9 +207,15 @@ export default function Page() {
 
   async function updateDevice() {
     if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
+    if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
+    const origin = window.location.origin;
+    const dataUrl = `${origin}/api/prices/latest?cardKey=${encodeURIComponent(selectedCard.cardKey)}`;
     const payload = {
+      schemaVersion: 1,
       configVersion: Date.now(),
-      productId: previewCard.productId,
+      cardKey: selectedCard.cardKey,
+      sourceId: selectedCard.sourceId,
+      dataUrl,
       templateId,
       renderProgram: program,
       refresh: true,
@@ -219,8 +244,18 @@ export default function Page() {
       <section className="layout">
         <aside className="side stack">
           <div className="card">
-            <h2>1、局域网设备</h2>
-            <button onClick={scanLanDevices} disabled={scanning}>{scanning ? '搜索中...' : '搜索局域网设备'}</button>
+            <h2>1、选择显示设备</h2>
+            <p className="muted">搜索同一局域网内的显示设备，请先配置设备连上热点。</p>
+            <button onClick={scanLanDevices} disabled={scanning}>{scanning ? '搜索中...' : '搜索设备'}</button>
+            <details className="helpBlock">
+              <summary>如何将设备连接至局域网</summary>
+              <ol className="muted helpList">
+                <li>给 ESP32 显示设备通电。</li>
+                <li>手机连接设备发出的配置热点。</li>
+                <li>在配置页选择家里/办公室 Wi-Fi，输入密码并保存。</li>
+                <li>设备重启后，手机切回同一个 Wi-Fi，再点击“搜索设备”。</li>
+              </ol>
+            </details>
             <div className="stack deviceList">
               {lanDevices.map((d) => <button key={d.ip} onClick={() => setSelectedDeviceIp(d.ip)} className={`deviceChoice ${selectedDeviceIp === d.ip ? 'active' : ''}`}><b>{d.name}</b><span>{d.ip}</span></button>)}
               {!lanDevices.length && <p className="muted">不用输入 IP。点击搜索后，选择发现的 Pokémon Display 设备。</p>}
@@ -229,10 +264,19 @@ export default function Page() {
 
           <div className="card">
             <h2>2、卡牌搜索</h2>
-            <div className="searchBox"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="卡名 / 编号 / productId" onKeyDown={(e) => { if (e.key === 'Enter') searchCards(); }} /><button onClick={() => searchCards()}>搜索</button></div>
-            <div className="searchList">
-              {pagedCards.map((c) => <button className={`cardRow ${selectedCard?.id === c.id ? 'active' : ''}`} key={c.id} onClick={() => useCard(c)}><b>{c.n}</b><span>{c.s || '--'} · {c.r || '--'} · Market {c.m == null ? '--' : `$${c.m}`}</span></button>)}
+            <div className="searchBox">
+              <select value={cardMarket} onChange={(e) => { setCardMarket(e.target.value); setCards([]); setSelectedCard(undefined); }} aria-label="卡牌市场">
+                <option value="pokemon-us">宝可梦美国</option>
+                <option value="pokemon-jp">宝可梦日本</option>
+              </select>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="例：Charizard promo / SWSH133 / 103/081" onKeyDown={(e) => { if (e.key === 'Enter') searchCards(); }} />
+              <button onClick={() => searchCards()}>搜索</button>
             </div>
+            <p className="muted">当前只搜索单卡，盒子、铁盒、补充包等密封产品已先过滤，后续可单独加分类。</p>
+            <div className="searchList">
+              {pagedCards.map((c) => <button className={`cardRow ${cardVariantKey(selectedCard) === cardVariantKey(c) ? 'active' : ''}`} key={cardVariantKey(c)} onClick={() => useCard(c)}><b>{c.n}</b><span>{c.s || '--'} · {c.r || '--'} · {c.t || '默认版本'} · Market {c.m == null ? '--' : `$${c.m}`}</span></button>)}
+            </div>
+            {!cards.length && <p className="muted">输入关键词后搜索；结果会优先按名称/系列/编号相关性排序，其次参考价格。</p>}
             {!!cards.length && <div className="pager"><button className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {pageCount}</span><button className="secondary" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>下一页</button></div>}
           </div>
         </aside>
@@ -247,8 +291,8 @@ export default function Page() {
             {templateId === 'custom' ? <ProgramEditor program={program} card={previewCard} onChange={setProgram} /> : <EpaperPreview program={program} card={previewCard} />}
           </div>
           <details className="card">
-            <summary>下发给设备的 renderProgram</summary>
-            <pre className="code">{JSON.stringify({ productId: previewCard.productId, templateId, renderProgram: program }, null, 2)}</pre>
+          <summary>高级：下发给设备的显示规则</summary>
+          <pre className="code">{JSON.stringify({ templateId, cardKey: selectedCard?.cardKey, dataUrl: selectedCard?.cardKey ? `/api/prices/latest?cardKey=${selectedCard.cardKey}` : '', renderProgram: program }, null, 2)}</pre>
           </details>
           <div className="message">{message || '流程：搜索设备 → 搜索并选择卡牌 → 选择模板/调整布局 → 更新设备显示。'}</div>
         </section>

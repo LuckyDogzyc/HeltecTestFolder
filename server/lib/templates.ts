@@ -16,31 +16,31 @@ export const sampleCard: CardSample = {
 
 export const templatePrograms: Record<string, RenderCommand[]> = {
   price: [
-    { type: 'text', value: '{title}', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '${market}', x: 8, y: 64, font: 2, color: 0, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 64, font: 2, color: 0, visible: true },
     { type: 'text', value: '{rarity} / {subType}', x: 8, y: 92, font: 0, color: 0, visible: true },
     { type: 'text', value: 'L ${low}', x: 150, y: 92, font: 0, color: 1, visible: true },
   ],
   collector: [
-    { type: 'text', value: '{title}', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '{set}', x: 8, y: 42, font: 0, color: 0, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
+    { type: 'text', value: '{set}', valueFrom: 'card.setName', x: 8, y: 42, font: 0, color: 0, visible: true },
     { type: 'text', value: '{rarity} / {subType}', x: 8, y: 61, font: 0, color: 0, visible: true },
-    { type: 'text', value: '${market}', x: 8, y: 90, font: 2, color: 0, visible: true },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 90, font: 2, color: 0, visible: true },
     { type: 'text', value: 'L ${low}', x: 140, y: 85, font: 0, color: 1, visible: true },
   ],
   market: [
-    { type: 'text', value: '{title}', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: 'M ${market}', x: 8, y: 42, font: 0, color: 0, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 42, font: 0, color: 0, visible: true },
     { type: 'text', value: 'Low ${low}', x: 8, y: 62, font: 0, color: 0, visible: true },
     { type: 'text', value: 'Mid ${mid}', x: 8, y: 82, font: 0, color: 0, visible: true },
     { type: 'text', value: 'High ${high}', x: 8, y: 102, font: 0, color: 0, visible: true },
   ],
   custom: [
-    { type: 'text', value: '{title}', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '{set}', x: 8, y: 42, font: 0, color: 0, visible: true },
-    { type: 'text', value: '${market}', x: 8, y: 72, font: 2, color: 0, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
+    { type: 'text', value: '{set}', valueFrom: 'card.setName', x: 8, y: 42, font: 0, color: 0, visible: true },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 72, font: 2, color: 0, visible: true },
     { type: 'text', value: 'L ${low}', x: 150, y: 92, font: 0, color: 1, visible: true },
-    { type: 'text', value: 'ID {productId}', x: 8, y: 112, font: 0, color: 0, visible: true },
+    { type: 'text', value: '{rarity}', x: 8, y: 112, font: 0, color: 0, visible: true },
     { type: 'text', value: '{power}', x: 190, y: 112, font: 0, color: 1, visible: true },
   ],
 };
@@ -88,7 +88,6 @@ export function renderValue(value: string, card: CardSample) {
     .replaceAll('{set}', card.set)
     .replaceAll('{rarity}', card.rarity)
     .replaceAll('{subType}', card.subType)
-    .replaceAll('{productId}', String(card.productId))
     .replaceAll('${market}', `$${card.market}`)
     .replaceAll('${low}', `$${card.low}`)
     .replaceAll('${mid}', `$${card.mid}`)
