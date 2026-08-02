@@ -138,11 +138,20 @@ function ipCandidates() {
   return Array.from(new Set(all));
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 900) {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 900, timeoutMessage?: string) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let didTimeout = false;
+  const timer = window.setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store', mode: 'cors' });
+  } catch (error) {
+    if (didTimeout) {
+      throw new Error(timeoutMessage || `请求超时：设备 ${Math.round(timeoutMs / 1000)} 秒内没有返回`);
+    }
+    throw error;
   } finally {
     window.clearTimeout(timer);
   }
@@ -244,7 +253,7 @@ export default function Page() {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
-    }, 12000);
+    }, 90000, '设备正在刷新墨水屏，90 秒内没有返回。请看一下屏幕是否已完成刷新；如果屏幕已更新，可以继续使用。');
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
     setMessage(`已更新 ${selectedDeviceIp}：版式、卡牌和屏幕显示已同步`);
