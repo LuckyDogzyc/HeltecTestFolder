@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms } from '@/lib/templates';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
@@ -32,8 +32,28 @@ function toPreviewCard(card?: CardSearchRow): CardSample {
 }
 
 function EpaperPreview({ program, card, editable, onChange }: { program: RenderCommand[]; card: CardSample; editable?: boolean; onChange?: (next: RenderCommand[]) => void }) {
+  const frameRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(0);
-  const scale = editable ? 3 : 2;
+  const [scale, setScale] = useState(2);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    function updateScale() {
+      const width = frame?.clientWidth || 500;
+      const nextScale = Math.max(0.72, Math.min(2, Math.floor((width / 250) * 100) / 100));
+      setScale(nextScale);
+    }
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(frame);
+    window.addEventListener('resize', updateScale);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
+  }, []);
+
   function beginDrag(index: number, ev: React.PointerEvent<HTMLDivElement>) {
     if (!editable || !onChange) return;
     const applyChange = onChange;
@@ -56,27 +76,27 @@ function EpaperPreview({ program, card, editable, onChange }: { program: RenderC
     window.addEventListener('pointerup', up);
   }
   return (
-    <div className="epaperFrame">
-      <div className={editable ? 'epaper big' : 'epaper medium'}>
-        {program.filter((item) => item.visible).map((item, idx) => {
-          const originalIndex = program.indexOf(item);
-          return (
-            <div
-              key={`${item.value}-${idx}`}
-              onPointerDown={(ev) => beginDrag(originalIndex, ev)}
-              onClick={() => setSelected(originalIndex)}
-              className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${editable && selected === originalIndex ? 'selected' : ''}`}
-              style={{
-                left: item.x * scale,
-                top: (item.y - (item.font === 2 ? 19 : 14)) * scale,
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left'
-              }}
-            >
-              {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x)}
-            </div>
-          );
-        })}
+    <div className="epaperFrame" ref={frameRef}>
+      <div className="epaperViewport" style={{ width: 250 * scale, height: 122 * scale }}>
+        <div className="epaper" style={{ transform: `scale(${scale})` }}>
+          {program.filter((item) => item.visible).map((item, idx) => {
+            const originalIndex = program.indexOf(item);
+            return (
+              <div
+                key={`${item.value}-${idx}`}
+                onPointerDown={(ev) => beginDrag(originalIndex, ev)}
+                onClick={() => setSelected(originalIndex)}
+                className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${editable && selected === originalIndex ? 'selected' : ''}`}
+                style={{
+                  left: item.x,
+                  top: item.y - (item.font === 2 ? 19 : 14),
+                }}
+              >
+                {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x)}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
