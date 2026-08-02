@@ -566,12 +566,15 @@ static String powerLabel() {
   return s;
 }
 
+static String priceDisplayValue(const String& raw);
+static String prefixedPriceDisplay(const String& prefix, const String& raw);
+
 static void drawTemplatePriceFocus(const CardPrice& card) {
   drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
   display.setFont(&FreeMonoBold12pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 64);
-  display.print("$"); display.print(card.marketPrice);
+  display.print(priceDisplayValue(card.marketPrice));
   display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 92);
@@ -579,7 +582,7 @@ static void drawTemplatePriceFocus(const CardPrice& card) {
   display.print(" / "); display.print(card.subTypeName.length() ? card.subTypeName : "Price");
   display.setTextColor(GxEPD_RED);
   display.setCursor(150, 92);
-  display.print("L $"); display.print(card.lowPrice);
+  display.print(prefixedPriceDisplay("L ", card.lowPrice));
   String p = powerLabel();
   if (p.length()) { display.setCursor(150, 112); display.print(p); }
 }
@@ -597,11 +600,11 @@ static void drawTemplateCollector(const CardPrice& card) {
   display.setFont(&FreeMonoBold12pt7b);
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(8, 90);
-  display.print("$"); display.print(card.marketPrice);
+  display.print(priceDisplayValue(card.marketPrice));
   display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_RED);
   display.setCursor(140, 85);
-  display.print("L $"); display.print(card.lowPrice);
+  display.print(prefixedPriceDisplay("L ", card.lowPrice));
   String p = powerLabel();
   if (p.length()) { display.setCursor(140, 105); display.print(p); }
 }
@@ -610,10 +613,10 @@ static void drawTemplateMarketDetail(const CardPrice& card) {
   drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
   display.setFont(&FreeMonoBold9pt7b);
   display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 42); display.print("M $"); display.print(card.marketPrice);
-  display.setCursor(8, 62); display.print("Low $"); display.print(card.lowPrice);
-  display.setCursor(8, 82); display.print("Mid $"); display.print(card.midPrice);
-  display.setCursor(8, 102); display.print("High $"); display.print(card.highPrice);
+  display.setCursor(8, 42); display.print(prefixedPriceDisplay("M ", card.marketPrice));
+  display.setCursor(8, 62); display.print(prefixedPriceDisplay("Low ", card.lowPrice));
+  display.setCursor(8, 82); display.print(prefixedPriceDisplay("Mid ", card.midPrice));
+  display.setCursor(8, 102); display.print(prefixedPriceDisplay("High ", card.highPrice));
   String p = powerLabel();
   if (p.length()) { display.setTextColor(GxEPD_RED); display.setCursor(160, 102); display.print(p); }
 }
@@ -631,10 +634,10 @@ static uint16_t layoutColor(uint8_t color) {
 static String layoutValue(int index, const CardPrice& card) {
   if (index == 0) return displayTitle(card);
   if (index == 1) { String v = card.setName; if (v.length() > 28) v = v.substring(0, 28); return v; }
-  if (index == 2) return String("$") + card.marketPrice;
-  if (index == 3) return String("L $") + card.lowPrice;
-  if (index == 4) return String("M $") + card.midPrice;
-  if (index == 5) return String("H $") + card.highPrice;
+  if (index == 2) return priceDisplayValue(card.marketPrice);
+  if (index == 3) return prefixedPriceDisplay("L ", card.lowPrice);
+  if (index == 4) return prefixedPriceDisplay("M ", card.midPrice);
+  if (index == 5) return prefixedPriceDisplay("H ", card.highPrice);
   if (index == 6) return String("ID ") + card.productId;
   if (index == 7) {
     if (!powerState.batteryValid) return "USB";
@@ -689,13 +692,27 @@ static String fitTextToSlot(String value, uint8_t font, uint8_t x) {
   return value;
 }
 
+static String priceDisplayValue(const String& raw) {
+  String v = raw;
+  v.trim();
+  if (!v.length() || v == "--") return "--";
+  if (v.startsWith("$")) return v;
+  return String("$") + v;
+}
+
+static String prefixedPriceDisplay(const String& prefix, const String& raw) {
+  String price = priceDisplayValue(raw);
+  if (price == "--") return prefix + "--";
+  return prefix + price;
+}
+
 static String applyRenderPlaceholders(String value, const CardPrice& card) {
   const char* keys[] = {"title", "name", "set", "rarity", "subType", "productId", "market", "low", "mid", "high", "power"};
   for (uint8_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
     String k = keys[i];
     String v = renderFieldValue(card, k);
     value.replace(String("{") + k + "}", v);
-    value.replace(String("${") + k + "}", String("$") + v);
+    value.replace(String("${") + k + "}", priceDisplayValue(v));
   }
   return value;
 }
@@ -1065,7 +1082,8 @@ static bool fetchSelectedCardFromDataUrl(CardPrice& card) {
   String label = jsonValueAtPath(lastDataJson, "price.label");
   if (label.startsWith("$")) label.remove(0, 1);
   if (label.length()) card.marketPrice = label;
-  if (!card.lowPrice.length()) card.lowPrice = card.marketPrice;
+  if (!card.marketPrice.length()) card.marketPrice = "--";
+  if (!card.lowPrice.length()) card.lowPrice = "--";
   lastError = "";
   Serial.printf("Fetched dataUrl cardKey=%s name=%s price=%s\n", card.cardKey.c_str(), card.productName.c_str(), card.marketPrice.c_str());
   return true;

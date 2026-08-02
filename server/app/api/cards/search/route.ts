@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hasUsablePrice, loadCards, MARKET_INDEX, norm, publicCard, tokens, type IndexedCard } from '@/lib/cardCatalog';
+import { loadCards, MARKET_INDEX, norm, publicCard, tokens, type IndexedCard } from '@/lib/cardCatalog';
 
 export const runtime = 'nodejs';
 
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 
   const cards = loadCards(market)
     .map((card) => ({ card, score: score(card, q) }))
-    .filter((x) => x.score > 0 && hasUsablePrice(x.card))
+    .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score || (b.card.m || 0) - (a.card.m || 0))
     .slice(0, 200)
     .map((x) => publicCard(x.card));

@@ -28,10 +28,10 @@ function toPreviewCard(card?: CardSearchRow): CardSample {
     set: card.s || sampleCard.set,
     rarity: card.r || sampleCard.rarity,
     subType: card.t || sampleCard.subType,
-    market: card.m == null ? sampleCard.market : String(card.m),
-    low: card.l == null ? sampleCard.low : String(card.l),
-    mid: card.mid == null ? sampleCard.mid : String(card.mid),
-    high: card.h == null ? sampleCard.high : String(card.h),
+    market: card.m == null ? '--' : String(card.m),
+    low: card.l == null ? '--' : String(card.l),
+    mid: card.mid == null ? '--' : String(card.mid),
+    high: card.h == null ? '--' : String(card.h),
     power: sampleCard.power,
   };
 }
@@ -197,7 +197,7 @@ export default function Page() {
     const nextCards = data.cards || [];
     setCards(nextCards);
     setPage(nextPage);
-    setMessage(nextCards.length ? `找到 ${nextCards.length} 张卡，已按相关性和价格排序；请点击一张卡牌后再更新设备` : `没有找到“${query}”的可用价格结果，请检查编号/市场后重搜`);
+    setMessage(nextCards.length ? `找到 ${nextCards.length} 张卡，已按相关性和价格排序；无价格会显示 --，请点击一张卡牌后再更新设备` : `没有找到“${query}”，请检查编号/市场后重搜`);
   }
 
   function useCard(card: CardSearchRow) {

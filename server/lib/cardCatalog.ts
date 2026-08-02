@@ -119,7 +119,7 @@ export function findCardByKey(cardKey: string) {
 
 export function priceLabel(card: CardRow, currency = 'USD') {
   const amount = typeof card.m === 'number' ? card.m : card.l;
-  if (typeof amount !== 'number') return '';
+  if (typeof amount !== 'number') return '--';
   if (currency === 'USD') return `$${amount.toFixed(2)}`;
   return `${amount.toFixed(2)} ${currency}`;
 }

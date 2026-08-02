@@ -81,6 +81,13 @@ export function fitTextToDeviceSlot(value: string, font: number, x: number) {
   return compacted.length > maxChars ? compacted.slice(0, maxChars) : compacted;
 }
 
+function displayPrice(value: string) {
+  const cleaned = (value || '').trim();
+  if (!cleaned || cleaned === '--') return '--';
+  if (cleaned.startsWith('$')) return cleaned;
+  return `$${cleaned}`;
+}
+
 export function renderValue(value: string, card: CardSample) {
   return value
     .replaceAll('{title}', card.title)
@@ -88,10 +95,10 @@ export function renderValue(value: string, card: CardSample) {
     .replaceAll('{set}', card.set)
     .replaceAll('{rarity}', card.rarity)
     .replaceAll('{subType}', card.subType)
-    .replaceAll('${market}', `$${card.market}`)
-    .replaceAll('${low}', `$${card.low}`)
-    .replaceAll('${mid}', `$${card.mid}`)
-    .replaceAll('${high}', `$${card.high}`)
+    .replaceAll('${market}', displayPrice(card.market))
+    .replaceAll('${low}', displayPrice(card.low))
+    .replaceAll('${mid}', displayPrice(card.mid))
+    .replaceAll('${high}', displayPrice(card.high))
     .replaceAll('{market}', card.market)
     .replaceAll('{low}', card.low)
     .replaceAll('{mid}', card.mid)
