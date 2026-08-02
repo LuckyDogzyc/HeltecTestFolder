@@ -22,34 +22,15 @@ jobs:
         run: |
           pip install requests
 
-      - name: Download and merge Pokémon prices via JSON
+      - name: Download and generate all configured Pokémon sources
         run: |
-          python download_pokemon_tcgcsv_json.py \
-            --output pokemon_prices_full.csv \
-            --sleep 0.2
-
-      - name: Generate ESP32 e-paper JSON feed
-        run: |
-          mkdir -p cards
-          mv pokemon_prices_full.csv cards/pokemon_cards.csv
-          python generate_epaper_cards_json.py \
-            --input cards/pokemon_cards.csv \
-            --output cards/epaper_cards.json \
-            --limit 50000 \
-            --include-missing-price
-          python generate_product_id_buckets.py \
-            --input cards/pokemon_cards.csv \
-            --output-dir cards/product_id_buckets \
-            --bucket-count 256
-          python generate_search_index.py \
-            --input cards/pokemon_cards.csv \
-            --output cards/search_index.min.json
+          python update_card_sources.py --sleep 0.2
 
       - name: Commit and push updated data files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add cards/pokemon_cards.csv cards/epaper_cards.json cards/search_index.min.json cards/product_id_buckets
+          git add cards update_card_sources.py download_pokemon_tcgcsv_json.py generate_epaper_cards_json.py generate_product_id_buckets.py generate_search_index.py
           if git diff --cached --quiet; then
             echo "No changes detected."
           else

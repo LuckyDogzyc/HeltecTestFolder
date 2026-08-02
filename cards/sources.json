@@ -1,0 +1,26 @@
+{
+  "sources": [
+    {
+      "market": "pokemon-us",
+      "displayName": "宝可梦美国",
+      "sourceId": "tcgcsv-pokemon-us",
+      "categoryId": 3,
+      "csv": "cards/pokemon_cards.us.csv",
+      "searchIndex": "cards/search_index.us.min.json"
+    },
+    {
+      "market": "pokemon-jp",
+      "displayName": "宝可梦日本",
+      "sourceId": "tcgcsv-pokemon-jp",
+      "categoryId": 85,
+      "csv": "cards/pokemon_cards.jp.csv",
+      "searchIndex": "cards/search_index.jp.min.json"
+    }
+  ],
+  "combined": {
+    "csv": "cards/pokemon_cards.csv",
+    "epaperJson": "cards/epaper_cards.json",
+    "searchIndex": "cards/search_index.min.json",
+    "bucketDir": "cards/product_id_buckets"
+  }
+}
