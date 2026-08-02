@@ -181,17 +181,18 @@ export default function Page() {
 
   async function searchCards(nextPage = 1) {
     const query = q.trim();
+    setSelectedCard(undefined);
     if (!query) {
       setCards([]);
-      setSelectedCard(undefined);
       setPage(1);
       return setMessage('请输入卡名、系列或卡牌编号后再搜索');
     }
     const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}&market=${encodeURIComponent(cardMarket)}`);
     const data = await res.json();
-    setCards(data.cards || []);
+    const nextCards = data.cards || [];
+    setCards(nextCards);
     setPage(nextPage);
-    setMessage(`找到 ${data.cards?.length || 0} 张卡，已按相关性和价格排序`);
+    setMessage(nextCards.length ? `找到 ${nextCards.length} 张卡，已按相关性和价格排序；请点击一张卡牌后再更新设备` : `没有找到“${query}”的可用价格结果，请检查编号/市场后重搜`);
   }
 
   function useCard(card: CardSearchRow) {
@@ -303,8 +304,9 @@ export default function Page() {
             </div>
             <p className="muted">当前只搜索单卡，盒子、铁盒、补充包等密封产品已先过滤，后续可单独加分类。</p>
             <div className="searchList">
-              {pagedCards.map((c) => <button className={`cardRow ${cardVariantKey(selectedCard) === cardVariantKey(c) ? 'active' : ''}`} key={cardVariantKey(c)} onClick={() => useCard(c)}><b>{c.n}</b><span>{c.s || '--'} · {c.r || '--'} · {c.t || '默认版本'} · Market {c.m == null ? '--' : `$${c.m}`}</span></button>)}
+              {pagedCards.map((c) => <button className={`cardRow ${cardVariantKey(selectedCard) === cardVariantKey(c) ? 'active' : ''}`} key={cardVariantKey(c)} onClick={() => useCard(c)}><b>{c.n}</b><span>{c.s || '--'} · {c.num || '--'} · {c.r || '--'} · {c.t || '默认版本'} · Market {c.m == null ? '--' : `$${c.m}`}</span></button>)}
             </div>
+            <p className={selectedCard ? 'selectedCardNotice ok' : 'selectedCardNotice muted'}>{selectedCard ? `当前已选：${selectedCard.n} · ${selectedCard.num || '--'} · ${selectedCard.s || '--'} · ${selectedCard.t || '默认版本'}` : '当前未选择卡牌：搜索后必须点击一条结果，才会下发到设备。'}</p>
             {!cards.length && <p className="muted">输入关键词后搜索；结果会优先按名称/系列/编号相关性排序，其次参考价格。</p>}
             {!!cards.length && <div className="pager"><button className="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {pageCount}</span><button className="secondary" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>下一页</button></div>}
           </div>

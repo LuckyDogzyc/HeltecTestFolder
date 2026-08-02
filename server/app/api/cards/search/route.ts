@@ -12,6 +12,8 @@ function expandedQueryParts(query: string) {
   const out = tokens(raw);
   // 通用归一，不在代码里写具体卡牌/周年/系列的业务映射；多语言别名来自索引 q 字段。
   if (/\bpokemon\b/u.test(raw)) out.push('pokémon');
+  if (/\bmega\b/u.test(raw)) out.push('m');
+  if (/\bm\b/u.test(raw)) out.push('mega');
   return unique(out);
 }
 
@@ -19,7 +21,8 @@ function score(card: IndexedCard, query: string) {
   const raw = norm(query);
   if (!raw) return 0;
   const qTokens = expandedQueryParts(query);
-  const requiredTokens = tokens(raw).filter((part) => !['25', '25th', 'promo', 'pokemon', 'card', 'tcg'].includes(part));
+  const rawTokens = tokens(raw);
+  const requiredTokens = rawTokens.filter((part) => !['25', '25th', 'promo', 'pokemon', 'card', 'tcg', 'mega'].includes(part));
   if (requiredTokens.length && !requiredTokens.every((part) => card._hay.includes(part))) return 0;
   let s = 0;
 
