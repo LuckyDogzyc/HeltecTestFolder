@@ -1085,8 +1085,11 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     connectWiFiWithFeedback(savedSsid, savedPass, 15000);
   }
   if (WiFi.status() == WL_CONNECTED) {
-    ok = fetchSelectedCardFromDataUrl(currentCard);
-    if (!ok) ok = fetchSelectedCardFromBucket(currentCard);
+    if (selectedDataUrl.length()) {
+      ok = fetchSelectedCardFromDataUrl(currentCard);
+    } else {
+      ok = fetchSelectedCardFromBucket(currentCard);
+    }
   } else {
     lastError = "No WiFi";
   }

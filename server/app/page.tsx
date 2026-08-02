@@ -13,10 +13,15 @@ function cardVariantKey(card?: CardSearchRow) {
   return card.cardKey;
 }
 
+function cardProductId(cardKey?: string) {
+  const productId = Number((cardKey || '').split(':')[1]);
+  return Number.isFinite(productId) ? productId : 0;
+}
+
 function toPreviewCard(card?: CardSearchRow): CardSample {
   if (!card) return sampleCard;
   return {
-    productId: 0,
+    productId: cardProductId(card.cardKey),
     cardKey: card.cardKey,
     title: normalizeTitle(card.n || sampleCard.name),
     name: card.n || sampleCard.name,
@@ -244,6 +249,7 @@ export default function Page() {
       schemaVersion: 1,
       configVersion: Date.now(),
       cardKey: selectedCard.cardKey,
+      productId: cardProductId(selectedCard.cardKey),
       sourceId: selectedCard.sourceId,
       dataUrl,
       templateId,
@@ -323,7 +329,7 @@ export default function Page() {
           </div>
           <details className="card">
           <summary>高级：下发给设备的显示规则</summary>
-          <pre className="code">{JSON.stringify({ templateId, cardKey: selectedCard?.cardKey, dataUrl: selectedCard?.cardKey ? `/api/prices/latest?cardKey=${selectedCard.cardKey}` : '', renderProgram: program }, null, 2)}</pre>
+          <pre className="code">{JSON.stringify({ templateId, cardKey: selectedCard?.cardKey, productId: cardProductId(selectedCard?.cardKey), dataUrl: selectedCard?.cardKey ? `/api/prices/latest?cardKey=${selectedCard.cardKey}` : '', renderProgram: program }, null, 2)}</pre>
           </details>
           <div className="message">{message || '流程：搜索设备 → 搜索并选择卡牌 → 选择模板/调整布局 → 更新设备显示。'}</div>
         </section>
