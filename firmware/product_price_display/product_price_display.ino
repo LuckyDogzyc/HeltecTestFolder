@@ -27,9 +27,17 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <SPI.h>
+#include <FS.h>
+#include <SPIFFS.h>
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
+
+// NTP：用于 {time} 占位符（更新时间），无 NTP 时回退到编译时间/--。
+static const char* NTP_SERVER_1 = "pool.ntp.org";
+static const char* NTP_SERVER_2 = "time.nist.gov";
+static constexpr long NTP_TZ_OFFSET_SEC = 8 * 3600;      // 北京时间 UTC+8
+static constexpr int NTP_DST_OFFSET_SEC = 0;
 
 // ===== 出厂默认值；客户后续通过 WebUI/AP 配网覆盖到 NVS =====
 const char* DEFAULT_WIFI_SSID = "你的WiFi";
@@ -45,6 +53,12 @@ const char* DEBUG_WIFI_PASS = "你的调试密码";
 // 这样手机总能连 PokemonDisplay-XXXX 做首次配网；家庭 Wi-Fi 下访问 STA IP 进入管理后台。
 // 未来接入物理开关/deep sleep 后，可在省电模式关闭此项。
 static constexpr bool ALWAYS_START_SETUP_AP = true;
+
+// 深睡眠：每次唤醒完成"心跳+取价+刷屏"后进入 esp_deep_sleep。
+// 唤醒周期 sleepMin 存 NVS（默认 60 分钟，0 = 禁用深睡，保持常连调试）。
+// 复位键（EN）= 强制回到通电状态，走完整 setup（配网/更新入口）。
+static constexpr int DEFAULT_SLEEP_MIN = 60;
+static constexpr int MAX_SLEEP_MIN = 24 * 60; // 最多一天
 
 // WebUI 调试阶段默认不开机自动刷新：先保证手机 AP 配网页和管理后台立刻可访问。
 // 否则 HTTP/墨水屏刷新会阻塞 loop()，手机连上 AP 后 captive portal 没法响应。
@@ -122,19 +136,38 @@ const LayoutItem DEFAULT_LAYOUT[LAYOUT_ITEM_COUNT] = {
   {true, 182, 112, 0, 1} // power
 };
 
-static constexpr int RENDER_CMD_MAX = 10;
+static constexpr int RENDER_CMD_MAX = 20;
 struct RenderCommand {
   bool visible;
   uint8_t x;
   uint8_t y;
-  uint8_t font;
-  uint8_t color;
+  uint8_t font;      // 0 内置6x8, 1 9pt, 2 12pt, 3 18pt, 4 24pt
+  uint8_t color;     // 0 black, 1 red
+  bool wrap;         // true: 超宽自动换行
   String value; // e.g. "{title}", "${market}", "ID {productId}"
   String valueFrom; // e.g. "price.label" or "card.localizedName"
   String fallback;  // pipe-separated paths, e.g. "card.localizedName|card.name"
 };
 RenderCommand renderProgram[RENDER_CMD_MAX];
 int renderProgramCount = 0;
+
+// ===== 位图帧（Web canvas 渲染的静态层 + 动态槽位）=====
+// 静态层：Web 端把非动态元素（标题/装饰/自定义文本，任意字体）渲染成 122×250 双平面 1bpp，
+//         black 4000B + red 4000B，存 SPIFFS /frame.bin，固件 drawNative 整帧绘制。
+// 动态槽位：价格/时间等实时字段由固件用内置字体叠加绘制（slots JSON 存 NVS）。
+static constexpr int FRAME_PLANE_BYTES = 4000;          // 122×250 / 8 每平面
+static constexpr int FRAME_SLOT_MAX = 8;
+struct FrameSlot {
+  bool valid;
+  uint8_t x;
+  uint8_t y;
+  uint8_t font;
+  uint8_t color;
+  String value;  // 占位符模板，如 "${market}"、"L ${low}"、"HH:MM {time}"
+};
+FrameSlot frameSlots[FRAME_SLOT_MAX];
+int frameSlotCount = 0;
+bool hasFrame = false;
 
 Preferences prefs;
 WebServer server(80);
@@ -153,6 +186,7 @@ String apSsid;
 long selectedProductId = DEFAULT_PRODUCT_ID;
 int selectedTemplate = 0; // 0 price focus, 1 collector, 2 market detail
 bool showBattery = true;
+int sleepMin = DEFAULT_SLEEP_MIN; // 深睡眠唤醒周期（分钟），0=禁用深睡
 String savedSsid;
 String savedPass;
 
@@ -189,6 +223,43 @@ static String jsonEscape(const String& s) {
   return out;
 }
 
+// 轻量 base64 解码（无依赖）。返回解码后字节数，-1 表示输入非法。
+static int base64Decode(const String& in, uint8_t* out, int maxOut) {
+  static const int8_t T[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+    52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+  };
+  int len = in.length();
+  int o = 0, acc = 0, bits = 0;
+  for (int i = 0; i < len && o < maxOut; ++i) {
+    char c = in.charAt(i);
+    if (c == '=' || c == '\n' || c == '\r' || c == ' ') continue;
+    int8_t v = T[(uint8_t)c];
+    if (v < 0) return -1;
+    acc = (acc << 6) | v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[o++] = (uint8_t)((acc >> bits) & 0xFF);
+    }
+  }
+  return o;
+}
+
 static void sendJson(int code, const String& body) {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -213,6 +284,9 @@ static void loadConfig() {
   selectedDataUrl = prefs.getString("dataUrl", "");
   loadLayoutConfig();
   loadRenderProgramConfig();
+  sleepMin = constrain(prefs.getInt("sleepMin", DEFAULT_SLEEP_MIN), 0, MAX_SLEEP_MIN);
+  loadFrameSlots();
+  initFrameStorage();
   if (savedSsid == "你的WiFi") savedSsid = "";
   if (DEBUG_USE_CODE_WIFI) {
     savedSsid = DEBUG_WIFI_SSID;
@@ -228,6 +302,7 @@ static void saveCardConfig() {
 static void saveDisplayConfig() {
   prefs.putInt("template", selectedTemplate);
   prefs.putBool("showBat", showBattery);
+  prefs.putInt("sleepMin", sleepMin);
 }
 
 static void loadLayoutConfig() {
@@ -257,8 +332,9 @@ static void loadRenderProgramConfig() {
     renderProgram[i].visible = prefs.getBool((String("rp") + i + "v").c_str(), true);
     renderProgram[i].x = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "x").c_str(), 0), 0, 249);
     renderProgram[i].y = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "y").c_str(), 0), 0, 121);
-    renderProgram[i].font = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "f").c_str(), 0), 0, 2);
+    renderProgram[i].font = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "f").c_str(), 0), 0, 4);
     renderProgram[i].color = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "c").c_str(), 0), 0, 1);
+    renderProgram[i].wrap = prefs.getBool((String("rp") + i + "w").c_str(), false);
     renderProgram[i].value = prefs.getString((String("rp") + i + "t").c_str(), "");
     renderProgram[i].valueFrom = prefs.getString((String("rp") + i + "vf").c_str(), "");
     renderProgram[i].fallback = prefs.getString((String("rp") + i + "fb").c_str(), "");
@@ -273,6 +349,7 @@ static void saveRenderProgramConfig() {
     prefs.putUChar((String("rp") + i + "y").c_str(), renderProgram[i].y);
     prefs.putUChar((String("rp") + i + "f").c_str(), renderProgram[i].font);
     prefs.putUChar((String("rp") + i + "c").c_str(), renderProgram[i].color);
+    prefs.putBool((String("rp") + i + "w").c_str(), renderProgram[i].wrap);
     prefs.putString((String("rp") + i + "t").c_str(), renderProgram[i].value.substring(0, 96));
     prefs.putString((String("rp") + i + "vf").c_str(), renderProgram[i].valueFrom.substring(0, 48));
     prefs.putString((String("rp") + i + "fb").c_str(), renderProgram[i].fallback.substring(0, 96));
@@ -623,8 +700,24 @@ static void drawTemplateMarketDetail(const CardPrice& card) {
 
 static const GFXfont* layoutFont(uint8_t font) {
   // WebUI 下发的 renderProgram 统一使用 FreeMonoBold 字族，避免预览字体和设备字体宽度差异过大。
+  // 档位：0/1=9pt, 2=12pt；更大字号由 Web 端 canvas 位图通道提供（固件不再内置大字体）。
   if (font == 2) return &FreeMonoBold12pt7b;
   return &FreeMonoBold9pt7b;
+}
+
+static uint8_t layoutFontSize(uint8_t font) {
+  // 返回字体像素高度近似值，用于换行行高与预览对齐。
+  if (font == 2) return 15;
+  return 12; // 9pt
+}
+
+static String currentTimeLabel() {
+  // 返回 "HH:MM"（北京时间）；NTP 未同步时返回 "--:--"
+  struct tm t;
+  if (!getLocalTime(&t, 1000)) return "--:--";
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
+  return String(buf);
 }
 
 static uint16_t layoutColor(uint8_t color) {
@@ -678,9 +771,8 @@ static String compactDisplayText(String value) {
 }
 
 static uint8_t approxCharWidth(uint8_t font) {
-  if (font == 2) return 14;
-  if (font == 1) return 11;
-  return 8;
+  if (font == 2) return 14; // 12pt
+  return 11; // 9pt
 }
 
 static String fitTextToSlot(String value, uint8_t font, uint8_t x) {
@@ -714,6 +806,7 @@ static String applyRenderPlaceholders(String value, const CardPrice& card) {
     value.replace(String("{") + k + "}", v);
     value.replace(String("${") + k + "}", priceDisplayValue(v));
   }
+  value.replace("{time}", currentTimeLabel());
   return value;
 }
 
@@ -729,12 +822,33 @@ static void drawRenderProgram(const CardPrice& card) {
     if (!value.length() && item.fallback.length() && lastDataJson.length()) value = firstJsonPathValue(lastDataJson, item.fallback);
     if (!value.length()) value = item.value;
     if (!value.length()) continue;
-    value = fitTextToSlot(applyRenderPlaceholders(value, card), item.font, item.x);
+    value = applyRenderPlaceholders(value, card);
     if (!value.length()) continue;
-    display.setFont(layoutFont(item.font));
-    display.setTextColor(layoutColor(item.color));
-    display.setCursor(item.x, item.y);
-    display.print(value);
+
+    if (item.wrap) {
+      // 换行模式：按字符宽度切行，逐行绘制（x 固定，y 按行高递增）。
+      uint8_t lineH = layoutFontSize(item.font);
+      uint8_t x = item.x, y = item.y;
+      const GFXfont* f = layoutFont(item.font);
+      display.setFont(f);
+      display.setTextColor(layoutColor(item.color));
+      while (value.length()) {
+        display.setCursor(x, y);
+        String line = fitTextToSlot(value, item.font, x);
+        if (!line.length()) break;
+        display.print(line);
+        value = value.substring(line.length());
+        y += lineH;
+        if (y > 250) break; // 屏幕高度保护
+      }
+    } else {
+      value = fitTextToSlot(value, item.font, item.x);
+      if (!value.length()) continue;
+      display.setFont(layoutFont(item.font));
+      display.setTextColor(layoutColor(item.color));
+      display.setCursor(item.x, item.y);
+      display.print(value);
+    }
   }
 }
 
@@ -766,6 +880,7 @@ static void drawScreen(const CardPrice& card) {
       else if (selectedTemplate == 2) drawTemplateMarketDetail(card);
       else if (selectedTemplate == 3) drawCustomLayout(card);
       else if (selectedTemplate == 4 && renderProgramCount > 0) drawRenderProgram(card);
+      else if (selectedTemplate == 5 && hasFrame) drawFrameWithSlots(card);
       else drawTemplatePriceFocus(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
@@ -934,8 +1049,9 @@ static bool applyServerConfigJson(const String& body) {
       renderProgram[count].visible = jsonBoolField(obj, "visible", true);
       renderProgram[count].x = (uint8_t)constrain(jsonIntField(obj, "x", 0), 0, 249);
       renderProgram[count].y = (uint8_t)constrain(jsonIntField(obj, "y", 0), 0, 121);
-      renderProgram[count].font = (uint8_t)constrain(jsonIntField(obj, "font", 0), 0, 2);
+      renderProgram[count].font = (uint8_t)constrain(jsonIntField(obj, "font", 0), 0, 4);
       renderProgram[count].color = (uint8_t)constrain(jsonIntField(obj, "color", 0), 0, 1);
+      renderProgram[count].wrap = jsonBoolField(obj, "wrap", false);
       renderProgram[count].value = value.substring(0, 96);
       renderProgram[count].valueFrom = valueFrom.substring(0, 48);
       renderProgram[count].fallback = fallback.substring(0, 96);
@@ -993,7 +1109,8 @@ static bool serverRegisterOrHeartbeat() {
   payload += "\"status\":{";
   payload += "\"stage\":\"" + jsonEscape(lastStage) + "\",";
   payload += "\"productId\":" + String(selectedProductId) + ",";
-  payload += "\"configVersion\":" + String(serverConfigVersion) + "}}";
+  payload += "\"configVersion\":" + String(serverConfigVersion) + ",";
+  payload += "\"sleepMin\":" + String(sleepMin) + "}}";
   int code = http.POST(payload);
   lastServerHttpStatus = code;
   if (code < 200 || code >= 300) lastServerError = String("register HTTP ") + code;
@@ -1119,6 +1236,130 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
   return ok;
 }
 
+// ===== 深睡眠 =====
+// 唤醒流程：RTC 定时唤醒 -> setup() 重跑 -> 连 WiFi -> 心跳 -> 取价刷屏 -> 再次深睡。
+// 复位键（EN）触发完整重启 = 回到通电状态，是"强制唤醒 + 重新配置"入口。
+static bool canDeepSleep() {
+  return sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED && !refreshInProgress;
+}
+
+static void enterDeepSleep() {
+  if (!canDeepSleep()) return;
+  Serial.printf("Entering deep sleep for %d min\n", sleepMin);
+  // 先发心跳，让云端 lastSeen 保持新鲜（WebUI 显示"在线/沉睡"判断依据）
+  serverRegisterOrHeartbeat();
+  Serial.flush();
+  esp_sleep_enable_timer_wakeup((uint64_t)sleepMin * 60ULL * 1000000ULL);
+  esp_deep_sleep_start();
+  // 不返回
+}
+
+static void initFrameStorage() {
+  if (!SPIFFS.begin(true)) Serial.println("SPIFFS mount failed");
+  hasFrame = SPIFFS.exists("/frame.bin");
+  Serial.printf("Frame storage: hasFrame=%d\n", hasFrame ? 1 : 0);
+}
+
+// 保存位图帧 + 槽位（槽位同时写 NVS 持久化）
+static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& slotsJson) {
+  if (!SPIFFS.begin(true)) { lastError = "SPIFFS mount failed"; return false; }
+  File f = SPIFFS.open("/frame.bin", "w");
+  if (!f) { lastError = "frame open failed"; return false; }
+  f.write(black, FRAME_PLANE_BYTES);
+  f.write(red, FRAME_PLANE_BYTES);
+  f.close();
+  // 解析槽位 JSON: [{"x":8,"y":64,"font":2,"color":0,"value":"${market}"},...]
+  // 用 from 偏移顺序扫描（value 可能含 {time} 花括号，不能用 {} 配对拆分）
+  frameSlotCount = 0;
+  int pos = 0;
+  while (frameSlotCount < FRAME_SLOT_MAX) {
+    int kx = slotsJson.indexOf("\"x\":", pos);
+    if (kx < 0) break;
+    FrameSlot& s = frameSlots[frameSlotCount];
+    s.valid = true;
+    s.x = (uint8_t)constrain(jsonIntField(slotsJson, "x", 0, kx), 0, 249);
+    s.y = (uint8_t)constrain(jsonIntField(slotsJson, "y", 0, kx), 0, 121);
+    s.font = (uint8_t)constrain(jsonIntField(slotsJson, "font", 0, kx), 0, 2);
+    s.color = (uint8_t)constrain(jsonIntField(slotsJson, "color", 0, kx), 0, 1);
+    s.value = jsonStringField(slotsJson, "value", kx);
+    ++frameSlotCount;
+    pos = kx + 8; // 推进到下一个槽位
+  }
+  prefs.putInt("frameSlots", frameSlotCount);
+  for (int i = 0; i < frameSlotCount; ++i) {
+    String kx = String("fs") + i + "x";
+    String ky = String("fs") + i + "y";
+    String kf = String("fs") + i + "f";
+    String kc = String("fs") + i + "c";
+    String kv = String("fs") + i + "v";
+    prefs.putUChar(kx.c_str(), frameSlots[i].x);
+    prefs.putUChar(ky.c_str(), frameSlots[i].y);
+    prefs.putUChar(kf.c_str(), frameSlots[i].font);
+    prefs.putUChar(kc.c_str(), frameSlots[i].color);
+    prefs.putString(kv.c_str(), frameSlots[i].value.substring(0, 48));
+  }
+  hasFrame = true;
+  lastError = "";
+  Serial.printf("Frame saved: slots=%d\n", frameSlotCount);
+  return true;
+}
+
+static void loadFrameSlots() {
+  frameSlotCount = constrain(prefs.getInt("frameSlots", 0), 0, FRAME_SLOT_MAX);
+  for (int i = 0; i < frameSlotCount; ++i) {
+    FrameSlot& s = frameSlots[i];
+    s.valid = true;
+    String kx = String("fs") + i + "x";
+    String ky = String("fs") + i + "y";
+    String kf = String("fs") + i + "f";
+    String kc = String("fs") + i + "c";
+    String kv = String("fs") + i + "v";
+    s.x = (uint8_t)constrain(prefs.getUChar(kx.c_str(), 0), 0, 249);
+    s.y = (uint8_t)constrain(prefs.getUChar(ky.c_str(), 0), 0, 121);
+    s.font = (uint8_t)constrain(prefs.getUChar(kf.c_str(), 0), 0, 2);
+    s.color = (uint8_t)constrain(prefs.getUChar(kc.c_str(), 0), 0, 1);
+    frameSlots[i].value = prefs.getString(kv.c_str(), "");
+  }
+}
+
+// 位图 + 动态槽位渲染（selectedTemplate == 5）
+static void drawFrameWithSlots(const CardPrice& card) {
+  if (!hasFrame) return;
+  File f = SPIFFS.open("/frame.bin", "r");
+  if (!f) return;
+  uint8_t* black = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+  uint8_t* red = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+  if (!black || !red) { free(black); free(red); f.close(); return; }
+  f.read(black, FRAME_PLANE_BYTES);
+  f.read(red, FRAME_PLANE_BYTES);
+  f.close();
+  // 整帧绘制（0x24=black, 0x26=red，数据为 1bpp 行 16 字节）
+  display.drawNative(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
+  // 叠加动态槽位
+  for (int i = 0; i < frameSlotCount; ++i) {
+    const FrameSlot& s = frameSlots[i];
+    if (!s.valid || !s.value.length()) continue;
+    String v = applyRenderPlaceholders(s.value, card);
+    v = fitTextToSlot(v, s.font, s.x);
+    if (!v.length()) continue;
+    display.setFont(layoutFont(s.font));
+    display.setTextColor(layoutColor(s.color));
+    display.setCursor(s.x, s.y);
+    display.print(v);
+  }
+  free(black);
+  free(red);
+}
+
+// 前向声明：这些工具函数定义在本文件后半部分，但位图通道/API 处理在前面引用
+static String jsonStringField(const String& json, const String& key, int from);
+static int jsonIntField(const String& json, const String& key, int def, int from);
+static String applyRenderPlaceholders(String value, const CardPrice& card);
+static String fitTextToSlot(String value, uint8_t font, uint8_t x);
+static uint16_t layoutColor(uint8_t color);
+static const GFXfont* layoutFont(uint8_t font);
+
+
 static String statusJson() {
   String body = "{";
   body += "\"wifi\":{";
@@ -1154,9 +1395,16 @@ static String statusJson() {
   body += "\"lastError\":\"" + jsonEscape(lastError) + "\",";
   body += "\"httpError\":\"" + jsonEscape(lastHttpError) + "\",";
   body += "\"stage\":\"" + jsonEscape(lastStage) + "\"},";
+  body += "\"display\":{";
+  body += "\"model\":\"QYEG0213RYF661\",";
+  body += "\"width\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
+  body += "\"height\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
+  body += "\"colors\":3,";
+  body += "\"rotation\":" + String(display.getRotation()) + "},";
   body += "\"config\":{";
   body += "\"template\":" + String(selectedTemplate) + ",";
   body += "\"showBattery\":" + String(showBattery ? "true" : "false") + ",";
+  body += "\"sleepMin\":" + String(sleepMin) + ",";
   body += "\"refreshInProgress\":" + String(refreshInProgress ? "true" : "false") + ",";
   body += "\"debugWifi\":" + String(DEBUG_USE_CODE_WIFI ? "true" : "false") + "},";
   body += "\"server\":{";
@@ -1269,6 +1517,7 @@ static void setupRoutes() {
   server.on("/api/config", HTTP_POST, []() {
     if (server.hasArg("template")) selectedTemplate = constrain(server.arg("template").toInt(), 0, 3);
     if (server.hasArg("showBattery")) showBattery = server.arg("showBattery") == "1" || server.arg("showBattery") == "true";
+    if (server.hasArg("sleepMin")) sleepMin = constrain(server.arg("sleepMin").toInt(), 0, MAX_SLEEP_MIN);
     saveDisplayConfig();
     sendJson(200, "{\"ok\":true}");
   });
@@ -1285,6 +1534,40 @@ static void setupRoutes() {
     String err = refreshNow ? lastError : lastServerError;
     String resp = String("{\"ok\":") + (ok ? "true" : "false") + ",\"refreshed\":" + (refreshNow ? "true" : "false") + ",\"error\":\"" + jsonEscape(err) + "\",\"status\":" + statusJson() + "}";
     sendJson(ok ? 200 : 400, resp);
+  });
+
+  // 位图帧通道：Web canvas 渲染的静态层（黑/红双平面 base64）+ 动态槽位 JSON。
+  // 固件存 SPIFFS /frame.bin，后续唤醒只拉价格、叠加槽位，不再依赖固件内置大字体。
+  server.on("/api/frame", HTTP_POST, []() {
+    String body = server.arg("plain");
+    if (!body.length()) body = server.arg("json");
+    if (!body.length()) { sendJson(400, "{\"ok\":false,\"error\":\"empty frame body\"}"); return; }
+    String blackB64 = jsonStringField(body, "blackB64");
+    String redB64 = jsonStringField(body, "redB64");
+    String slots = jsonStringField(body, "slots");
+    if (!blackB64.length() || !redB64.length()) { sendJson(400, "{\"ok\":false,\"error\":\"missing blackB64/redB64\"}"); return; }
+    uint8_t* black = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+    uint8_t* red = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+    if (!black || !red) { free(black); free(red); sendJson(500, "{\"ok\":false,\"error\":\"alloc failed\"}"); return; }
+    int nb = base64Decode(blackB64, black, FRAME_PLANE_BYTES);
+    int nr = base64Decode(redB64, red, FRAME_PLANE_BYTES);
+    if (nb != FRAME_PLANE_BYTES || nr != FRAME_PLANE_BYTES) {
+      free(black); free(red);
+      sendJson(400, String("{\"ok\":false,\"error\":\"bad frame size black=") + nb + " red=" + nr + "\"}");
+      return;
+    }
+    bool ok = saveFrame(black, red, slots);
+    free(black); free(red);
+    if (ok) {
+      selectedTemplate = 5; // 位图模式
+      prefs.putInt("template", 5);
+      bool refreshNow = jsonBoolField(body, "refresh", false);
+      if (refreshNow) ok = refreshCardAndScreen(true);
+      String err = refreshNow ? lastError : "";
+      sendJson(ok ? 200 : 400, String("{\"ok\":") + (ok ? "true" : "false") + ",\"refreshed\":" + (refreshNow ? "true" : "false") + ",\"error\":\"" + jsonEscape(err) + "\",\"status\":" + statusJson() + "}");
+    } else {
+      sendJson(400, String("{\"ok\":false,\"error\":\"") + jsonEscape(lastError) + "\"}");
+    }
   });
   server.on("/api/server", HTTP_POST, []() {
     serverBaseUrl = server.arg("url");
@@ -1368,6 +1651,10 @@ void setup() {
   if (ALWAYS_START_SETUP_AP) startConfigAP();
   if (savedSsid.length()) wifiOk = connectWiFiWithFeedback(savedSsid, savedPass, 20000);
   if (!wifiOk) startConfigAP();
+  if (WiFi.status() == WL_CONNECTED) {
+    configTime(NTP_TZ_OFFSET_SEC, NTP_DST_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2);
+    Serial.println("NTP started");
+  }
 
   setupRoutes();
   server.begin();
@@ -1384,6 +1671,12 @@ void setup() {
     setStage("webui-ready");
   } else {
     Serial.println("Boot auto refresh disabled; use WebUI button to refresh screen.");
+  }
+
+  // 深睡模式：唤醒后自动取价刷屏，完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
+  if (sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED) {
+    if (!BOOT_AUTO_REFRESH) refreshCardAndScreen(true); // 深睡循环必须开机刷新
+    enterDeepSleep();
   }
 }
 

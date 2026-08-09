@@ -16,40 +16,73 @@ export const sampleCard: CardSample = {
 
 export const templatePrograms: Record<string, RenderCommand[]> = {
   price: [
-    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 64, font: 2, color: 0, visible: true },
-    { type: 'text', value: '{rarity} / {subType}', x: 8, y: 92, font: 0, color: 0, visible: true },
-    { type: 'text', value: 'L ${low}', x: 150, y: 92, font: 0, color: 1, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true, wrap: false },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 64, font: 2, color: 0, visible: true, wrap: false },
+    { type: 'text', value: '{rarity} / {subType}', x: 8, y: 92, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: 'L ${low}', x: 150, y: 92, font: 0, color: 1, visible: true, wrap: false },
   ],
   collector: [
-    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '{set}', valueFrom: 'card.setName', x: 8, y: 42, font: 0, color: 0, visible: true },
-    { type: 'text', value: '{rarity} / {subType}', x: 8, y: 61, font: 0, color: 0, visible: true },
-    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 90, font: 2, color: 0, visible: true },
-    { type: 'text', value: 'L ${low}', x: 140, y: 85, font: 0, color: 1, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true, wrap: false },
+    { type: 'text', value: '{set}', valueFrom: 'card.setName', x: 8, y: 42, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: '{rarity} / {subType}', x: 8, y: 61, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 90, font: 2, color: 0, visible: true, wrap: false },
+    { type: 'text', value: 'L ${low}', x: 140, y: 85, font: 0, color: 1, visible: true, wrap: false },
   ],
   market: [
-    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 42, font: 0, color: 0, visible: true },
-    { type: 'text', value: 'Low ${low}', x: 8, y: 62, font: 0, color: 0, visible: true },
-    { type: 'text', value: 'Mid ${mid}', x: 8, y: 82, font: 0, color: 0, visible: true },
-    { type: 'text', value: 'High ${high}', x: 8, y: 102, font: 0, color: 0, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true, wrap: false },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 42, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: 'Low ${low}', x: 8, y: 62, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: 'Mid ${mid}', x: 8, y: 82, font: 0, color: 0, visible: true, wrap: false },
+    { type: 'text', value: 'High ${high}', x: 8, y: 102, font: 0, color: 0, visible: true, wrap: false },
   ],
   custom: [
-    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true },
-    { type: 'text', value: '{set}', valueFrom: 'card.setName', x: 8, y: 42, font: 0, color: 0, visible: true },
-    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 72, font: 2, color: 0, visible: true },
-    { type: 'text', value: 'L ${low}', x: 150, y: 92, font: 0, color: 1, visible: true },
-    { type: 'text', value: '{rarity}', x: 8, y: 112, font: 0, color: 0, visible: true },
-    { type: 'text', value: '{power}', x: 190, y: 112, font: 0, color: 1, visible: true },
+    { type: 'text', value: '{title}', valueFrom: 'card.localizedName', fallback: 'card.name|card.number', x: 8, y: 18, font: 1, color: 1, visible: true, wrap: false },
+    { type: 'text', value: '${market}', valueFrom: 'price.label', x: 8, y: 64, font: 2, color: 0, visible: true, wrap: false },
+    { type: 'text', value: '{time}', x: 8, y: 96, font: 0, color: 0, visible: true, wrap: false },
   ],
 };
+
+// 自定义布局的元素类型：下拉选择用
+export type ElementTypeId =
+  | 'title' | 'name' | 'set' | 'rarity' | 'subType'
+  | 'market' | 'low' | 'mid' | 'high'
+  | 'productId' | 'time' | 'power' | 'custom';
+
+export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[] = [
+  { id: 'title', label: '卡牌名（标题）', value: '{title}' },
+  { id: 'name', label: '卡牌全名', value: '{name}' },
+  { id: 'set', label: '系列', value: '{set}' },
+  { id: 'rarity', label: '稀有度', value: '{rarity}' },
+  { id: 'subType', label: '版本类型', value: '{subType}' },
+  { id: 'market', label: 'Market 价格', value: '${market}' },
+  { id: 'low', label: 'Low 价格', value: '${low}' },
+  { id: 'mid', label: 'Mid 价格', value: '${mid}' },
+  { id: 'high', label: 'High 价格', value: '${high}' },
+  { id: 'productId', label: 'Product ID', value: 'ID {productId}' },
+  { id: 'time', label: '更新时间', value: '{time}' },
+  { id: 'power', label: '电源状态', value: '{power}' },
+  { id: 'custom', label: '自定义文本', value: '' },
+];
+
+export const MAX_CUSTOM_ITEMS = 20;
+
+// 从 value 反推元素类型 id（用于下拉回显）
+export function elementTypeOf(value: string): ElementTypeId {
+  const hit = ELEMENT_TYPES.find((t) => t.id !== 'custom' && t.value === value);
+  return hit ? hit.id : 'custom';
+}
+
+// 新建元素：返回默认的自定义文本元素
+export function makeCustomItem(index: number): RenderCommand {
+  return { type: 'text', value: `文本${index}`, x: 8, y: 30 + index * 14, font: 0, color: 0, visible: true, wrap: false };
+}
 
 export const templateLabels: Record<string, string> = {
   price: '价格优先',
   collector: '收藏展示',
   market: '行情详情',
   custom: '自定义布局',
+  frame: '位图模式',
 };
 
 export function normalizeTitle(name: string) {
@@ -75,9 +108,9 @@ function approxCharWidth(font: number) {
   return 8;
 }
 
-export function fitTextToDeviceSlot(value: string, font: number, x: number) {
+export function fitTextToDeviceSlot(value: string, font: number, x: number, deviceWidth = 250) {
   const compacted = compactDisplayText(value);
-  const maxChars = Math.max(4, Math.floor((250 - x) / approxCharWidth(font)));
+  const maxChars = Math.max(4, Math.floor((deviceWidth - x) / approxCharWidth(font)));
   return compacted.length > maxChars ? compacted.slice(0, maxChars) : compacted;
 }
 
@@ -89,6 +122,9 @@ function displayPrice(value: string) {
 }
 
 export function renderValue(value: string, card: CardSample) {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
   return value
     .replaceAll('{title}', card.title)
     .replaceAll('{name}', card.name)
@@ -103,5 +139,6 @@ export function renderValue(value: string, card: CardSample) {
     .replaceAll('{low}', card.low)
     .replaceAll('{mid}', card.mid)
     .replaceAll('{high}', card.high)
-    .replaceAll('{power}', card.power);
+    .replaceAll('{power}', card.power)
+    .replaceAll('{time}', `${hh}:${mm}`);
 }

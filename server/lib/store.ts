@@ -46,13 +46,36 @@ export function clientIp(headers: Headers) {
   return (headers.get('x-forwarded-for') || headers.get('x-real-ip') || '127.0.0.1').split(',')[0].trim();
 }
 
+// 设备三态：online=在线（刚心跳过）/ sleeping=深睡中（心跳在 1~2 个唤醒周期内）/ offline=离线
+// 唤醒周期来自设备心跳上报的 status.sleepMin（分钟）；默认 60 分钟。
+export type DevicePresence = 'online' | 'sleeping' | 'offline';
+
+export function devicePresence(device: DeviceRecord): DevicePresence {
+  const lastSeenMs = Date.parse(device.lastSeen || '');
+  if (!Number.isFinite(lastSeenMs)) return 'offline';
+  const ageMin = (Date.now() - lastSeenMs) / 60000;
+  if (ageMin <= 10) return 'online';
+  const sleepMinRaw = Number((device.lastStatus as Record<string, unknown> | undefined)?.sleepMin);
+  const sleepMin = Number.isFinite(sleepMinRaw) && sleepMinRaw > 0 ? sleepMinRaw : 60;
+  if (ageMin <= sleepMin * 2) return 'sleeping';
+  return 'offline';
+}
+
+export function nextWakeAt(device: DeviceRecord): string | null {
+  if (devicePresence(device) !== 'sleeping') return null;
+  const lastSeenMs = Date.parse(device.lastSeen || '');
+  const sleepMinRaw = Number((device.lastStatus as Record<string, unknown> | undefined)?.sleepMin);
+  const sleepMin = Number.isFinite(sleepMinRaw) && sleepMinRaw > 0 ? sleepMinRaw : 60;
+  return new Date(lastSeenMs + sleepMin * 60000).toISOString();
+}
+
 export function listDevices(publicIp?: string) {
   const store = readStore();
-  const cutoff = Date.now() - 10 * 60 * 1000;
+  // 不再按 10 分钟新鲜度过滤：睡眠设备也要显示（沉睡中状态），只有 offline 的隐藏
   return store.devices.filter((d) => {
-    const fresh = Date.parse(d.lastSeen) > cutoff;
-    if (!publicIp) return fresh;
-    return fresh && (d.publicIp === publicIp || d.publicIp === '127.0.0.1');
+    if (devicePresence(d) === 'offline') return false;
+    if (!publicIp) return true;
+    return d.publicIp === publicIp || d.publicIp === '127.0.0.1';
   });
 }
 

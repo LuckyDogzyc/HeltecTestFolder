@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clientIp, listDevices, registerDevice } from '@/lib/store';
+import { clientIp, devicePresence, listDevices, nextWakeAt, registerDevice } from '@/lib/store';
 
 export const runtime = 'nodejs';
 
@@ -7,7 +7,12 @@ export async function GET(req: NextRequest) {
   const ip = clientIp(req.headers);
   const url = new URL(req.url);
   const currentNetworkOnly = url.searchParams.get('currentNetwork') !== '0';
-  return NextResponse.json({ publicIp: ip, devices: listDevices(currentNetworkOnly ? ip : undefined) });
+  const devices = listDevices(currentNetworkOnly ? ip : undefined).map((d) => ({
+    ...d,
+    presence: devicePresence(d),
+    nextWakeAt: nextWakeAt(d),
+  }));
+  return NextResponse.json({ publicIp: ip, devices });
 }
 
 export async function POST(req: NextRequest) {
