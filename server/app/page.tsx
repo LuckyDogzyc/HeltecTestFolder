@@ -315,7 +315,7 @@ export default function Page() {
       const res = await fetch(`/api/devices?currentNetwork=0`);
       const data = await res.json();
       const cloud = (data.devices || [])
-        .filter((d: any) => d.deviceId && !d.isDemo)
+        .filter((d: any) => d.deviceId && !d.isDemo && !String(d.firmware || '').startsWith('mock'))
         .map((d: any) => ({
           ip: d.lanIp || d.deviceId,
           name: d.displayName || d.factoryName || d.deviceId,

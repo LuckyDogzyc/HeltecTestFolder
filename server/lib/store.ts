@@ -141,7 +141,8 @@ export function registerDevice(input: { deviceId: string; deviceKey: string; fac
     device.lanIp = input.lanIp || device.lanIp;
     device.firmware = input.firmware || device.firmware;
     device.lastSeen = nowIso();
-    device.lastStatus = input.status || device.lastStatus;
+    // 合并 status：新上报的字段覆盖旧值（display/产品等会更新），缺失字段保留旧值
+    device.lastStatus = { ...(device.lastStatus || {}), ...(input.status || {}) };
   }
   writeStore(store);
   return device;

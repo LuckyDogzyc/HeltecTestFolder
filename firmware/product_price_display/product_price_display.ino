@@ -980,7 +980,15 @@ static bool serverRegisterOrHeartbeat() {
   payload += "\"stage\":\"" + jsonEscape(lastStage) + "\",";
   payload += "\"productId\":" + String(selectedProductId) + ",";
   payload += "\"configVersion\":" + String(serverConfigVersion) + ",";
-  payload += "\"sleepMin\":" + String(sleepMin) + "}}";
+  payload += "\"sleepMin\":" + String(sleepMin) + ",";
+  // 屏幕信息：云端设备列表展示用（WebUI 从 lastStatus.display 读 250×122/型号/rotation）
+  payload += "\"display\":{";
+  payload += "\"model\":\"QYEG0213RYF661\",";
+  payload += "\"width\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
+  payload += "\"height\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
+  payload += "\"colors\":3,";
+  payload += "\"rotation\":1}";   // 关闭 display 对象
+  payload += "}}";               // 关闭 status 对象 + 根对象
   int code = http.POST(payload);
   lastServerHttpStatus = code;
   if (code < 200 || code >= 300) lastServerError = String("register HTTP ") + code;
