@@ -1413,7 +1413,8 @@ static String statusJson() {
   body += "\"width\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
   body += "\"height\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
   body += "\"colors\":3,";
-  body += "\"rotation\":" + String(display.getRotation()) + "},";
+  // rotation 固定为 1（固件 setRotation(1)），不能用 display.getRotation()（未画屏时返回 0）
+  body += "\"rotation\":1},";
   body += "\"config\":{";
   body += "\"template\":" + String(selectedTemplate) + ",";
   body += "\"showBattery\":" + String(showBattery ? "true" : "false") + ",";
@@ -1542,6 +1543,15 @@ static void setupRoutes() {
     if (!body.length()) body = server.arg("json");
     if (!body.length()) { sendJson(400, "{\"ok\":false,\"error\":\"empty render program body\"}"); return; }
     bool ok = applyServerConfigJson(body);
+    // 指令模式与位图模式互斥：收到新 renderProgram 规则时清除旧位图，
+    // 否则 drawScreen 会优先画残留的 /frame.bin（屏幕上显示旧内容）。
+    if (ok && hasFrame) {
+      SPIFFS.remove("/frame.bin");
+      hasFrame = false;
+      prefs.remove("frameSlots");
+      frameSlotCount = 0;
+      Serial.println("Frame cleared: renderProgram mode");
+    }
     bool refreshNow = ok && jsonBoolField(body, "refresh", false);
     if (refreshNow) ok = refreshCardAndScreen(true);
     String err = refreshNow ? lastError : lastServerError;
