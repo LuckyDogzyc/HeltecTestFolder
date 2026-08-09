@@ -19,9 +19,13 @@ export const EPAPER_W = 122;
 export const EPAPER_H = 250;
 const ROW_BYTES = Math.ceil(EPAPER_W / 8); // 16
 
-// 字号档位 → 像素高度（与 DOM 编辑预览 CSS 对齐：font0-4 = 15/15/21/30/40px；
-// 位图模式可自由用任意字号，Web canvas 是唯一渲染源）
+// 统一字族：与 DOM 编辑预览 CSS 完全一致（Courier New → ui-monospace → Menlo → monospace），
+// 保证编辑预览与 canvas 真实渲染的文字宽度一致。
+export const FONT_FAMILY = '"Courier New", ui-monospace, Menlo, monospace';
+// 字号档位 → 像素高度（与 DOM 编辑预览 CSS 对齐：font0-4 = 15/15/21/30/40px）
 export const FONT_PX: Record<number, number> = { 0: 15, 1: 15, 2: 21, 3: 30, 4: 40 };
+// 字重（与 DOM CSS 对齐：font0/1 = 800, font2/3/4 = 900）
+export const FONT_WEIGHT: Record<number, number> = { 0: 800, 1: 800, 2: 900, 3: 900, 4: 900 };
 
 export type RenderedFrame = {
   black: Uint8Array; // 4000 字节
@@ -54,7 +58,7 @@ function packPixel(plane: Uint8Array, physX: number, physY: number, set: boolean
 // 预览图单独用 renderPreviewFrame（画全部元素）展示。
 // canvas 用逻辑坐标 250×122（与固件 setRotation(1) 渲染坐标系一致），
 // 输出时按 rotation 1 映射 (logicalX, logicalY) → (121 - logicalY, logicalX) 转物理 122×250 位图。
-export function renderStaticFrame(program: RenderCommand[], card: CardSample, fontFamily = 'monospace'): RenderedFrame {
+export function renderStaticFrame(program: RenderCommand[], card: CardSample, fontFamily = FONT_FAMILY): RenderedFrame {
   const canvas = document.createElement('canvas');
   canvas.width = LOGICAL_W;
   canvas.height = LOGICAL_H;
@@ -69,8 +73,9 @@ export function renderStaticFrame(program: RenderCommand[], card: CardSample, fo
     if (isDynamic(item) && (item.font ?? 0) <= 2) continue;
     const text = renderValue(item.value, card);
     if (!text) continue;
-    const px = FONT_PX[item.font] || 12;
-    ctx.font = `bold ${px}px ${fontFamily}`;
+    const px = FONT_PX[item.font] || 15;
+    const weight = FONT_WEIGHT[item.font] ?? 800;
+    ctx.font = `${weight} ${px}px ${fontFamily}`;
     ctx.fillStyle = item.color === 1 ? '#b00020' : '#111111';
     ctx.textBaseline = 'top';
     ctx.fillText(fitTextToDeviceSlot(text, item.font, item.x, LOGICAL_W), item.x, item.y);
@@ -124,7 +129,7 @@ export function dynamicSlots(program: RenderCommand[]) {
 // 预览渲染：画全部元素（含动态价格，用当前卡数据）——展示设备最终显示效果。
 // 与 renderStaticFrame 的唯一区别是动态元素也画（设备上动态元素由固件用内置字体画，
 // 字形近似 monospace，位置颜色一致，此处预览所见即所得）。
-export function renderPreviewFrame(program: RenderCommand[], card: CardSample, fontFamily = 'monospace'): string {
+export function renderPreviewFrame(program: RenderCommand[], card: CardSample, fontFamily = FONT_FAMILY): string {
   const canvas = document.createElement('canvas');
   canvas.width = LOGICAL_W;
   canvas.height = LOGICAL_H;
@@ -135,8 +140,9 @@ export function renderPreviewFrame(program: RenderCommand[], card: CardSample, f
     if (!item.visible) continue;
     const text = renderValue(item.value, card);
     if (!text) continue;
-    const px = FONT_PX[item.font] || 12;
-    ctx.font = `bold ${px}px ${fontFamily}`;
+    const px = FONT_PX[item.font] || 15;
+    const weight = FONT_WEIGHT[item.font] ?? 800;
+    ctx.font = `${weight} ${px}px ${fontFamily}`;
     ctx.fillStyle = item.color === 1 ? '#b00020' : '#111111';
     ctx.textBaseline = 'top';
     ctx.fillText(fitTextToDeviceSlot(text, item.font, item.x, LOGICAL_W), item.x, item.y);

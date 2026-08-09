@@ -60,9 +60,6 @@ function normalizeDisplayInfo(status: any): DisplayInfo | undefined {
   };
 }
 
-// 字号档位对应的预览字号偏移（近似固件字体基线）
-const FONT_Y_OFFSET = [8, 14, 19, 27, 36] as const;
-
 function EpaperPreview({ program, card, display, editable, onChange }: { program: RenderCommand[]; card: CardSample; display: DisplayInfo; editable?: boolean; onChange?: (next: RenderCommand[]) => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(0);
@@ -146,7 +143,7 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
                 className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${isSelected ? 'selected' : ''}`}
                 style={{
                   left: item.x,
-                  top: (item.y - FONT_Y_OFFSET[item.font]) || item.y,
+                  top: item.y,
                 }}
               >
                 {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x, deviceWidth)}
