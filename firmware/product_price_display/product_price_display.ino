@@ -1274,22 +1274,30 @@ static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& sl
   f.write(black, FRAME_PLANE_BYTES);
   f.write(red, FRAME_PLANE_BYTES);
   f.close();
-  // 解析槽位 JSON: [{"x":8,"y":64,"font":2,"color":0,"value":"${market}"},...]
-  // 用 from 偏移顺序扫描（value 可能含 {time} 花括号，不能用 {} 配对拆分）
+  // 解析槽位 JSON: [{"value":"${market}","x":124,"y":60,"font":4,"color":0},...]
+  // 注意 value 字段在 x/y/font/color 之前（WebUI JSON.stringify 的对象键序）！
+  // 必须从每个槽位对象的起点（第一个 "value" 或 "x"）解析，不能从 "x" 之后查 value。
   frameSlotCount = 0;
   int pos = 0;
   while (frameSlotCount < FRAME_SLOT_MAX) {
+    // 找到下一个槽位对象起点：最近的 "value" 或 "x" 键
+    int kv = slotsJson.indexOf("\"value\":", pos);
     int kx = slotsJson.indexOf("\"x\":", pos);
-    if (kx < 0) break;
+    int start = -1;
+    if (kv >= 0 && kx >= 0) start = kv < kx ? kv : kx;
+    else if (kv >= 0) start = kv;
+    else if (kx >= 0) start = kx;
+    else break;
     FrameSlot& s = frameSlots[frameSlotCount];
     s.valid = true;
-    s.x = (uint8_t)constrain(jsonIntField(slotsJson, "x", 0, kx), 0, 249);
-    s.y = (uint8_t)constrain(jsonIntField(slotsJson, "y", 0, kx), 0, 121);
-    s.font = (uint8_t)constrain(jsonIntField(slotsJson, "font", 0, kx), 0, 2);
-    s.color = (uint8_t)constrain(jsonIntField(slotsJson, "color", 0, kx), 0, 1);
-    s.value = jsonStringField(slotsJson, "value", kx);
+    s.value = jsonStringField(slotsJson, "value", start);
+    s.x = (uint8_t)constrain(jsonIntField(slotsJson, "x", 0, start), 0, 249);
+    s.y = (uint8_t)constrain(jsonIntField(slotsJson, "y", 0, start), 0, 121);
+    s.font = (uint8_t)constrain(jsonIntField(slotsJson, "font", 0, start), 0, 4);
+    s.color = (uint8_t)constrain(jsonIntField(slotsJson, "color", 0, start), 0, 1);
+    if (!s.value.length()) { pos = start + 8; continue; } // 无 value 的槽位跳过
     ++frameSlotCount;
-    pos = kx + 8; // 推进到下一个槽位
+    pos = start + 8; // 推进到下一个槽位
   }
   prefs.putInt("frameSlots", frameSlotCount);
   for (int i = 0; i < frameSlotCount; ++i) {
