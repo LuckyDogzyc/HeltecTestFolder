@@ -870,8 +870,15 @@ static void drawScreen(const CardPrice& card) {
   SPI.begin(EPD_SCLK, -1, EPD_MOSI, EPD_CS);
   display.init(115200, true, 2, false);
   display.setRotation(1);
-  display.setFullWindow();
   setStage("epd-refresh-start");
+  // 位图模式为默认渲染路径：静态层（Web canvas 任意字体）+ 动态槽位（价格/时间固件本地画）。
+  // 只要下发过一次位图，后续所有刷新（含深睡唤醒）都走位图，旧模板仅作无位图时的 fallback。
+  if (hasFrame && card.found) {
+    drawFrameWithSlots(card);
+    setStage("epd-done");
+    return;
+  }
+  display.setFullWindow();
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
@@ -880,7 +887,6 @@ static void drawScreen(const CardPrice& card) {
       else if (selectedTemplate == 2) drawTemplateMarketDetail(card);
       else if (selectedTemplate == 3) drawCustomLayout(card);
       else if (selectedTemplate == 4 && renderProgramCount > 0) drawRenderProgram(card);
-      else if (selectedTemplate == 5 && hasFrame) drawFrameWithSlots(card);
       else drawTemplatePriceFocus(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
@@ -1333,8 +1339,11 @@ static void drawFrameWithSlots(const CardPrice& card) {
   f.read(black, FRAME_PLANE_BYTES);
   f.read(red, FRAME_PLANE_BYTES);
   f.close();
-  // 整帧绘制（0x24=black, 0x26=red，数据为 1bpp 行 16 字节）
-  display.drawNative(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
+  // 整帧绘制：3 色屏必须用双平面 writeImage（writeNative 只写黑平面，会丢红色）。
+  // 注意 GxEPD2 的 writeImage 要求 x 8 字节对齐：WIDTH_VISIBLE=122 → wb=16 字节行，
+  // 位图按 128 宽布局（每行 16 字节，前 122 位有效），库内部处理字节对齐。
+  display.setFullWindow();
+  display.writeImage(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
   // 叠加动态槽位
   for (int i = 0; i < frameSlotCount; ++i) {
     const FrameSlot& s = frameSlots[i];
@@ -1347,6 +1356,8 @@ static void drawFrameWithSlots(const CardPrice& card) {
     display.setCursor(s.x, s.y);
     display.print(v);
   }
+  display.refresh();
+  display.hibernate(); // 位图路径同样要断电休眠，省电
   free(black);
   free(red);
 }
@@ -1397,8 +1408,10 @@ static String statusJson() {
   body += "\"stage\":\"" + jsonEscape(lastStage) + "\"},";
   body += "\"display\":{";
   body += "\"model\":\"QYEG0213RYF661\",";
-  body += "\"width\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
-  body += "\"height\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
+  // 上报"旋转后的可视方向"（setRotation(1) 后逻辑坐标 = 横屏 250×122），
+  // WebUI 预览/布局坐标必须与固件渲染坐标系一致，否则长宽反、拖拽错位。
+  body += "\"width\":" + String(display.width()) + ",";
+  body += "\"height\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
   body += "\"colors\":3,";
   body += "\"rotation\":" + String(display.getRotation()) + "},";
   body += "\"config\":{";

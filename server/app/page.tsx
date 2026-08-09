@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms, ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, makeCustomItem } from '@/lib/templates';
-import { framePayload, renderStaticFrame, dynamicSlots, EPAPER_W, EPAPER_H, frameToBase64 } from '@/lib/epaperBitmap';
+import { framePayload } from '@/lib/epaperBitmap';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -376,46 +376,17 @@ export default function Page() {
     if (target?.cloudOnly && target.presence !== 'online') {
       return setMessage('该设备正在深睡中，无法直连下发。修改已可保存到云端：设备会在下次唤醒（' + (target.nextWakeAt ? new Date(target.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '按唤醒周期') + '）时自动拉取最新配置。');
     }
-    if (!selectedDisplay) return setMessage('当前设备没有返回墨水屏尺寸信息，不能生成可靠预览和布局；请升级固件后重新搜索设备');
     if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
-    const origin = window.location.origin;
-    const dataUrl = `${origin}/api/prices/latest?cardKey=${encodeURIComponent(selectedCard.cardKey)}`;
-    const payload = {
-      schemaVersion: 1,
-      configVersion: Date.now(),
-      cardKey: selectedCard.cardKey,
-      productId: cardProductId(selectedCard.cardKey),
-      sourceId: selectedCard.sourceId,
-      dataUrl,
-      templateId,
-      display: selectedDisplay,
-      renderProgram: program,
-      refresh: true,
-    };
-    const res = await fetchWithTimeout(`http://${selectedDeviceIp}/api/render-program`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-    }, 90000, '设备正在刷新墨水屏，90 秒内没有返回。请看一下屏幕是否已完成刷新；如果屏幕已更新，可以继续使用。');
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    setMessage(`已更新 ${selectedDeviceIp}：版式、卡牌和屏幕显示已同步`);
-  }
-
-  // 位图模式：Web canvas 渲染静态层（任意字体）→ 双平面 base64 下发；价格/时间等动态槽位固件本地画
-  async function sendFrame() {
-    if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
-    const target = lanDevices.find((d) => d.ip === selectedDeviceIp);
-    if (target?.cloudOnly && target.presence !== 'online') {
-      return setMessage('该设备正在深睡中，无法直连下发。设备会在下次唤醒时自动生效（或按设备复位键立即同步）。');
-    }
-    if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
+    // 默认位图模式：Web canvas 渲染静态层（任意字体字号）→ 双平面下发；动态槽位固件本地画。
+    // 这是设备的默认渲染路径，之后改字体/排版只需重新下发，不用刷固件。
     const payload = framePayload(program, previewCard);
     const body = {
       blackB64: payload.blackB64,
       redB64: payload.redB64,
       slots: JSON.stringify(payload.slots),
       refresh: true,
+      cardKey: selectedCard.cardKey,
+      productId: cardProductId(selectedCard.cardKey),
     };
     setMessage('正在渲染静态层位图并下发...');
     const res = await fetchWithTimeout(`http://${selectedDeviceIp}/api/frame`, {
@@ -426,7 +397,7 @@ export default function Page() {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const slotCount = payload.slots.length;
-    setMessage(`位图已下发 ${selectedDeviceIp}：静态层 ${EPAPER_W}×${EPAPER_H} 渲染完成，${slotCount} 个动态槽位（价格/时间）由设备本地绘制。以后改字体/排版只需在此重新下发，不用刷固件。`);
+    setMessage(`已更新 ${selectedDeviceIp}：静态层位图（任意字体）已下发，${slotCount} 个动态槽位（价格/时间）由设备本地绘制。`);
   }
 
   return (
@@ -438,8 +409,7 @@ export default function Page() {
           <p className="muted">公网服务器只负责搜索和排版；浏览器自动搜索同局域网 ESP32，并把最终显示规则直接下发给设备。</p>
         </div>
         <div className="heroActions">
-          <button className="secondary" onClick={() => sendFrame().catch((e) => setMessage(`位图下发失败：${e.message}`))}>下发位图（任意字体）</button>
-          <button className="primaryAction" onClick={() => updateDevice().catch((e) => setMessage(`更新失败：${e.message}`))}>更新设备显示</button>
+          <button className="primaryAction" onClick={() => updateDevice().catch((e) => setMessage(`更新失败：${e.message}`))}>更新设备显示（位图）</button>
         </div>
       </section>
 
