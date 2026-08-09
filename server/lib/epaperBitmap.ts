@@ -5,7 +5,7 @@ import { renderValue, fitTextToDeviceSlot } from './templates';
 // 物理屏幕 122×250（宽×高），三色：白/黑/红。
 // 固件 setRotation(1) 后渲染坐标系为逻辑 250×122（横屏），模板坐标 x∈[0,249], y∈[0,121]。
 // 本渲染器用逻辑坐标画 canvas，输出时按 rotation 1 映射 (x,y) → (122-1-y, x) 转物理 122×250 位图。
-// 输出：双平面 1bpp（black + red），每行 16 字节（(122+7)/8），像素 0=白 1=着墨。
+// 输出：双平面 1bpp（black + red），每行 16 字节（(122+7)/8），像素 0=着墨 1=白（GxEPD2 数据格式）。
 // 用途：把"静态层"（标题/装饰/自定义文本，任意字体字号）渲染成位图，
 //       固件只负责 writeImage 画位图 + 在动态槽位用内置字体画价格，从此不再内置大字体。
 
@@ -34,9 +34,11 @@ function isDynamic(item: RenderCommand): boolean {
   return DYNAMIC_FIELDS.some((f) => v.includes(`{${f}}`) || v.includes(`$${f}`));
 }
 
+// GxEPD2 数据格式：bit 1 = 白（不着墨），bit 0 = 着墨（黑/红）。
+// 平面初始化为全 0xFF（白底），着墨像素清 0。
 function packPixel(plane: Uint8Array, physX: number, physY: number, set: boolean) {
   if (physX < 0 || physX >= EPAPER_W || physY < 0 || physY >= EPAPER_H) return;
-  if (set) plane[physY * ROW_BYTES + (physX >> 3)] |= (0x80 >> (physX & 7));
+  if (set) plane[physY * ROW_BYTES + (physX >> 3)] &= ~(0x80 >> (physX & 7));
 }
 
 // 渲染一帧：把 program 中非动态元素画到位图上（动态元素跳过，留给固件实时画）
@@ -63,8 +65,9 @@ export function renderStaticFrame(program: RenderCommand[], card: CardSample, fo
 
   const imageData = ctx.getImageData(0, 0, LOGICAL_W, LOGICAL_H);
   const px = imageData.data;
-  const black = new Uint8Array(EPAPER_H * ROW_BYTES);
-  const red = new Uint8Array(EPAPER_H * ROW_BYTES);
+  // 平面初始化为全 0xFF = 白底（GxEPD2 数据格式 bit 1 = 白）
+  const black = new Uint8Array(EPAPER_H * ROW_BYTES).fill(0xFF);
+  const red = new Uint8Array(EPAPER_H * ROW_BYTES).fill(0xFF);
   for (let ly = 0; ly < LOGICAL_H; ly++) {
     for (let lx = 0; lx < LOGICAL_W; lx++) {
       const i = (ly * LOGICAL_W + lx) * 4;
