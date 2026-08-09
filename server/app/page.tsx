@@ -70,16 +70,6 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
   const deviceWidth = display.width;
   const deviceHeight = display.height;
 
-  // 真实像素预览：与下发位图同源的 canvas 渲染（所见即所得）
-  const realPreview = useMemo(() => {
-    try {
-      const frame = renderStaticFrame(program, card);
-      return frame.dataUrl;
-    } catch {
-      return '';
-    }
-  }, [program, card]);
-
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -143,17 +133,6 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
 
   return (
     <div className="epaperFrame" ref={frameRef}>
-      {realPreview && (
-        <div className="realPreviewWrap">
-          <div className="realPreviewLabel">真实渲染预览（250×122 像素，与下发一致）</div>
-          <img
-            src={realPreview}
-            alt="设备真实渲染预览"
-            style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111' }}
-          />
-          <div className="muted">此图与下发到设备的位图来自同一次 canvas 渲染；价格等动态字段在设备上会以固件字体实时更新。</div>
-        </div>
-      )}
       <div className="epaperViewport" style={{ width: deviceWidth * scale, height: deviceHeight * scale, aspectRatio: `${deviceWidth} / ${deviceHeight}` }}>
         <div className="epaper" style={{ width: deviceWidth, height: deviceHeight, transform: `scale(${scale})` }}>
           {program.filter((item) => item.visible).map((item, idx) => {
@@ -493,6 +472,24 @@ export default function Page() {
           <div className="card">
             <h2>3、显示设置</h2>
             <div className="templateTabs">{Object.entries(templateLabels).map(([id, label]) => <button key={id} className={templateId === id ? 'active' : 'secondary'} onClick={() => chooseTemplate(id)}>{label}</button>)}</div>
+          </div>
+          <div className="card previewCard">
+            <div className="sectionTitle"><h2>4、真实渲染预览</h2><span className="muted">与下发到设备的位图完全一致（122×250 像素，三色）</span></div>
+            <div className="realPreviewWrap">
+              {selectedCard ? (() => {
+                try {
+                  const frame = renderStaticFrame(program, previewCard);
+                  return (
+                    <>
+                      <img src={frame.dataUrl} alt="设备真实渲染预览" style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111', maxWidth: '100%' }} />
+                      <div className="muted">与下发位图同源同一次 canvas 渲染；价格等动态字段在设备上会以固件字体实时更新（位置颜色一致，字形近似）。</div>
+                    </>
+                  );
+                } catch {
+                  return <div className="noPreview">渲染失败，请检查布局。</div>;
+                }
+              })() : <div className="noPreview">请先搜索并选择一张卡牌，此处显示真实渲染效果。</div>}
+            </div>
           </div>
           <div className="card previewCard">
             <div className="sectionTitle"><h2>{templateId === 'custom' ? '自定义布局编辑器' : `模板：${templateLabels[templateId]}`}</h2><span className="muted">当前卡牌：{previewCard.name}</span></div>
