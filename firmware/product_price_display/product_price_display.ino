@@ -113,29 +113,6 @@ struct PowerState {
   bool batteryValid = false;
 };
 
-static constexpr int LAYOUT_ITEM_COUNT = 8;
-struct LayoutItem {
-  bool visible;
-  uint8_t x;
-  uint8_t y;
-  uint8_t font;  // 0 small, 1 bold9, 2 bold12
-  uint8_t color; // 0 black, 1 red
-};
-
-const char* LAYOUT_FIELDS[LAYOUT_ITEM_COUNT] = {"name", "set", "market", "low", "mid", "high", "pid", "power"};
-const char* LAYOUT_LABELS[LAYOUT_ITEM_COUNT] = {"Card Name", "Set", "Market", "Low", "Mid", "High", "Product ID", "Power"};
-LayoutItem customLayout[LAYOUT_ITEM_COUNT];
-const LayoutItem DEFAULT_LAYOUT[LAYOUT_ITEM_COUNT] = {
-  {true, 8, 18, 2, 1},   // name
-  {true, 8, 42, 0, 0},   // set
-  {true, 8, 72, 2, 0},   // market
-  {true, 150, 92, 0, 1}, // low
-  {false, 8, 102, 0, 0}, // mid
-  {false, 92, 102, 0, 0},// high
-  {true, 8, 112, 0, 0},  // product id
-  {true, 182, 112, 0, 1} // power
-};
-
 static constexpr int RENDER_CMD_MAX = 20;
 struct RenderCommand {
   bool visible;
@@ -282,7 +259,6 @@ static void loadConfig() {
   selectedCardKey = prefs.getString("cardKey", "");
   selectedSourceId = prefs.getString("srcId", "");
   selectedDataUrl = prefs.getString("dataUrl", "");
-  loadLayoutConfig();
   loadRenderProgramConfig();
   sleepMin = constrain(prefs.getInt("sleepMin", DEFAULT_SLEEP_MIN), 0, MAX_SLEEP_MIN);
   loadFrameSlots();
@@ -303,27 +279,6 @@ static void saveDisplayConfig() {
   prefs.putInt("template", selectedTemplate);
   prefs.putBool("showBat", showBattery);
   prefs.putInt("sleepMin", sleepMin);
-}
-
-static void loadLayoutConfig() {
-  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
-    customLayout[i] = DEFAULT_LAYOUT[i];
-    customLayout[i].visible = prefs.getBool((String("l") + i + "v").c_str(), DEFAULT_LAYOUT[i].visible);
-    customLayout[i].x = (uint8_t)constrain(prefs.getUChar((String("l") + i + "x").c_str(), DEFAULT_LAYOUT[i].x), 0, 249);
-    customLayout[i].y = (uint8_t)constrain(prefs.getUChar((String("l") + i + "y").c_str(), DEFAULT_LAYOUT[i].y), 0, 121);
-    customLayout[i].font = (uint8_t)constrain(prefs.getUChar((String("l") + i + "f").c_str(), DEFAULT_LAYOUT[i].font), 0, 2);
-    customLayout[i].color = (uint8_t)constrain(prefs.getUChar((String("l") + i + "c").c_str(), DEFAULT_LAYOUT[i].color), 0, 1);
-  }
-}
-
-static void saveLayoutConfig() {
-  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
-    prefs.putBool((String("l") + i + "v").c_str(), customLayout[i].visible);
-    prefs.putUChar((String("l") + i + "x").c_str(), customLayout[i].x);
-    prefs.putUChar((String("l") + i + "y").c_str(), customLayout[i].y);
-    prefs.putUChar((String("l") + i + "f").c_str(), customLayout[i].font);
-    prefs.putUChar((String("l") + i + "c").c_str(), customLayout[i].color);
-  }
 }
 
 static void loadRenderProgramConfig() {
@@ -644,59 +599,6 @@ static String powerLabel() {
 }
 
 static String priceDisplayValue(const String& raw);
-static String prefixedPriceDisplay(const String& prefix, const String& raw);
-
-static void drawTemplatePriceFocus(const CardPrice& card) {
-  drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
-  display.setFont(&FreeMonoBold12pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 64);
-  display.print(priceDisplayValue(card.marketPrice));
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 92);
-  display.print(card.rarity.length() ? card.rarity : "Card");
-  display.print(" / "); display.print(card.subTypeName.length() ? card.subTypeName : "Price");
-  display.setTextColor(GxEPD_RED);
-  display.setCursor(150, 92);
-  display.print(prefixedPriceDisplay("L ", card.lowPrice));
-  String p = powerLabel();
-  if (p.length()) { display.setCursor(150, 112); display.print(p); }
-}
-
-static void drawTemplateCollector(const CardPrice& card) {
-  drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 42);
-  if (card.productId == 562018) display.print("SV Promo #132");
-  else { display.print("ID "); display.print(card.productId); }
-  display.setCursor(8, 61);
-  display.print(card.rarity.length() ? card.rarity : "Card");
-  display.print(" / "); display.print(card.subTypeName.length() ? card.subTypeName : "Price");
-  display.setFont(&FreeMonoBold12pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 90);
-  display.print(priceDisplayValue(card.marketPrice));
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setTextColor(GxEPD_RED);
-  display.setCursor(140, 85);
-  display.print(prefixedPriceDisplay("L ", card.lowPrice));
-  String p = powerLabel();
-  if (p.length()) { display.setCursor(140, 105); display.print(p); }
-}
-
-static void drawTemplateMarketDetail(const CardPrice& card) {
-  drawCenteredText(displayTitle(card), 18, &FreeMonoBold12pt7b, GxEPD_RED);
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(8, 42); display.print(prefixedPriceDisplay("M ", card.marketPrice));
-  display.setCursor(8, 62); display.print(prefixedPriceDisplay("Low ", card.lowPrice));
-  display.setCursor(8, 82); display.print(prefixedPriceDisplay("Mid ", card.midPrice));
-  display.setCursor(8, 102); display.print(prefixedPriceDisplay("High ", card.highPrice));
-  String p = powerLabel();
-  if (p.length()) { display.setTextColor(GxEPD_RED); display.setCursor(160, 102); display.print(p); }
-}
 
 static const GFXfont* layoutFont(uint8_t font) {
   // WebUI 下发的 renderProgram 统一使用 FreeMonoBold 字族，避免预览字体和设备字体宽度差异过大。
@@ -723,22 +625,6 @@ static String currentTimeLabel() {
 static uint16_t layoutColor(uint8_t color) {
   return color == 1 ? GxEPD_RED : GxEPD_BLACK;
 }
-
-static String layoutValue(int index, const CardPrice& card) {
-  if (index == 0) return displayTitle(card);
-  if (index == 1) { String v = card.setName; if (v.length() > 28) v = v.substring(0, 28); return v; }
-  if (index == 2) return priceDisplayValue(card.marketPrice);
-  if (index == 3) return prefixedPriceDisplay("L ", card.lowPrice);
-  if (index == 4) return prefixedPriceDisplay("M ", card.midPrice);
-  if (index == 5) return prefixedPriceDisplay("H ", card.highPrice);
-  if (index == 6) return String("ID ") + card.productId;
-  if (index == 7) {
-    if (!powerState.batteryValid) return "USB";
-    return String("B ") + String(powerState.voltage, 2) + "V";
-  }
-  return "";
-}
-
 
 static String renderFieldValue(const CardPrice& card, const String& key) {
   if (key == "title") return displayTitle(card);
@@ -790,12 +676,6 @@ static String priceDisplayValue(const String& raw) {
   if (!v.length() || v == "--") return "--";
   if (v.startsWith("$")) return v;
   return String("$") + v;
-}
-
-static String prefixedPriceDisplay(const String& prefix, const String& raw) {
-  String price = priceDisplayValue(raw);
-  if (price == "--") return prefix + "--";
-  return prefix + price;
 }
 
 static String applyRenderPlaceholders(String value, const CardPrice& card) {
@@ -852,19 +732,6 @@ static void drawRenderProgram(const CardPrice& card) {
   }
 }
 
-static void drawCustomLayout(const CardPrice& card) {
-  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
-    const LayoutItem& item = customLayout[i];
-    if (!item.visible) continue;
-    String value = layoutValue(i, card);
-    if (!value.length()) continue;
-    display.setFont(layoutFont(item.font));
-    display.setTextColor(layoutColor(item.color));
-    display.setCursor(item.x, item.y);
-    display.print(value);
-  }
-}
-
 static void drawScreen(const CardPrice& card) {
   setStage("epd-init");
   SPI.begin(EPD_SCLK, -1, EPD_MOSI, EPD_CS);
@@ -872,22 +739,19 @@ static void drawScreen(const CardPrice& card) {
   display.setRotation(1);
   setStage("epd-refresh-start");
   // 位图模式为默认渲染路径：静态层（Web canvas 任意字体）+ 动态槽位（价格/时间固件本地画）。
-  // 只要下发过一次位图，后续所有刷新（含深睡唤醒）都走位图，旧模板仅作无位图时的 fallback。
+  // 只要下发过一次位图，后续所有刷新（含深睡唤醒）都走位图。
   if (hasFrame && card.found) {
     drawFrameWithSlots(card);
     setStage("epd-done");
     return;
   }
+  // 无位图时 fallback：云端指令路径（drawRenderProgram）或 NO DATA。
   display.setFullWindow();
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
-    if (card.found) {
-      if (selectedTemplate == 1) drawTemplateCollector(card);
-      else if (selectedTemplate == 2) drawTemplateMarketDetail(card);
-      else if (selectedTemplate == 3) drawCustomLayout(card);
-      else if (selectedTemplate == 4 && renderProgramCount > 0) drawRenderProgram(card);
-      else drawTemplatePriceFocus(card);
+    if (card.found && renderProgramCount > 0) {
+      drawRenderProgram(card);
     } else {
       drawCenteredText("NO DATA", 35, &FreeMonoBold12pt7b, GxEPD_RED);
       display.setFont(&FreeMonoBold9pt7b);
@@ -1468,15 +1332,7 @@ static String statusJson() {
   body += "\"renderCommandCount\":" + String(renderProgramCount) + ",";
   body += "\"httpStatus\":" + String(lastServerHttpStatus) + ",";
   body += "\"lastError\":\"" + jsonEscape(lastServerError) + "\"},";
-  body += "\"layout\":{";
-  body += "\"items\":[";
-  for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
-    if (i) body += ",";
-    body += "{\"i\":" + String(i) + ",\"field\":\"" + LAYOUT_FIELDS[i] + "\",\"label\":\"" + LAYOUT_LABELS[i] + "\",";
-    body += "\"v\":" + String(customLayout[i].visible ? "true" : "false") + ",\"x\":" + String(customLayout[i].x) + ",\"y\":" + String(customLayout[i].y) + ",";
-    body += "\"f\":" + String(customLayout[i].font) + ",\"c\":" + String(customLayout[i].color) + "}";
-  }
-  body += "]}";
+  body += "\"layout\":{\"items\":[]},";
   body += "}";
   return body;
 }
@@ -1651,19 +1507,6 @@ static void setupRoutes() {
     bool changed = pollServerConfig();
     String body = String("{\"heartbeat\":") + (heartbeat ? "true" : "false") + ",\"changed\":" + (changed ? "true" : "false") + ",\"status\":" + statusJson() + "}";
     sendJson(200, body);
-  });
-  server.on("/api/layout", HTTP_POST, []() {
-    for (int i = 0; i < LAYOUT_ITEM_COUNT; ++i) {
-      customLayout[i].visible = server.arg(String("v") + i) == "1" || server.arg(String("v") + i) == "true";
-      customLayout[i].x = (uint8_t)constrain(server.arg(String("x") + i).toInt(), 0, 249);
-      customLayout[i].y = (uint8_t)constrain(server.arg(String("y") + i).toInt(), 0, 121);
-      customLayout[i].font = (uint8_t)constrain(server.arg(String("f") + i).toInt(), 0, 2);
-      customLayout[i].color = (uint8_t)constrain(server.arg(String("c") + i).toInt(), 0, 1);
-    }
-    saveLayoutConfig();
-    selectedTemplate = 3;
-    saveDisplayConfig();
-    sendJson(200, "{\"ok\":true,\"template\":3}");
   });
   server.on("/api/refresh", HTTP_POST, []() {
     bool ok = refreshCardAndScreen(true);
