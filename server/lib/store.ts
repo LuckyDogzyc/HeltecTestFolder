@@ -108,7 +108,17 @@ export function registerDevice(input: { deviceId: string; deviceKey: string; fac
   const store = readStore();
   let device = store.devices.find((d) => d.deviceId === input.deviceId);
   const keyHash = hashKey(input.deviceKey);
-  if (device && device.deviceKeyHash !== keyHash) throw new Error('device key mismatch');
+  if (device && device.deviceKeyHash !== keyHash) {
+    // 设备 ID 被旧 demo/测试记录占用：允许真实设备覆盖（demo 记录无有效 key）
+    if (device.firmware === 'server-mock' || device.firmware?.startsWith('mock')) {
+      device.firmware = input.firmware || device.firmware;
+      device.deviceKeyHash = keyHash;
+      device.publicIp = input.publicIp;
+      device.lanIp = input.lanIp || device.lanIp;
+    } else {
+      throw new Error('device key mismatch');
+    }
+  }
   if (!device) {
     device = {
       deviceId: input.deviceId,

@@ -309,7 +309,7 @@ export default function Page() {
       const res = await fetch(`/api/devices?currentNetwork=0`);
       const data = await res.json();
       const cloud = (data.devices || [])
-        .filter((d: any) => d.deviceId && d.deviceId !== 'esp32-demo-5628')
+        .filter((d: any) => d.deviceId && !d.isDemo)
         .map((d: any) => ({
           ip: d.lanIp || d.deviceId,
           name: d.displayName || d.factoryName || d.deviceId,

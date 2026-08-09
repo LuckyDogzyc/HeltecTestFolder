@@ -1569,6 +1569,14 @@ void setup() {
                 BOOT_AUTO_REFRESH ? "true" : "false");
   setStage("webui-ready");
 
+  // 启动即注册心跳：WebUI 在公网（腾讯云）时，设备通过公网注册到服务器，
+  // WebUI 云端设备列表才能看到它（局域网扫描只对同网段浏览器有效）。
+  // serverBaseUrl 为空时此调用直接返回 false（无副作用），不影响局域网直连模式。
+  if (WiFi.status() == WL_CONNECTED) {
+    serverRegisterOrHeartbeat();
+    pollServerConfig();
+  }
+
   if (BOOT_AUTO_REFRESH) {
     if (WiFi.status() == WL_CONNECTED) refreshCardAndScreen(true);
     else drawScreen(currentCard);
