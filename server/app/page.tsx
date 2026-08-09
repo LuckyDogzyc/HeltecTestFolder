@@ -373,11 +373,26 @@ export default function Page() {
   async function updateDevice() {
     if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
     const target = lanDevices.find((d) => d.ip === selectedDeviceIp);
-    if (target?.cloudOnly && target.presence !== 'online') {
-      return setMessage('该设备正在深睡中，无法直连下发。修改已可保存到云端：设备会在下次唤醒（' + (target.nextWakeAt ? new Date(target.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '按唤醒周期') + '）时自动拉取最新配置。');
-    }
     if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
-    // 默认位图模式：Web canvas 渲染静态层（任意字体字号）→ 双平面下发；动态槽位固件本地画。
+    // 云端设备（浏览器无法直连 ESP32，可能跨网段/睡眠）：保存到云端，等设备唤醒时拉取。
+    // 固件拉取后走 renderProgram 指令路径渲染（方向已修正），位图直连下发仅限局域网设备。
+    if (target?.cloudOnly) {
+      try {
+        setMessage('设备在云端（可能睡眠/跨网段），正在保存到云端，唤醒后自动应用...');
+        const res = await fetch(`/api/devices/${encodeURIComponent(target.deviceId)}/config`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), templateId, renderProgram: program }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setMessage(`已保存到云端：设备 ${target.deviceId} 唤醒后将自动应用（预计 ${target.nextWakeAt ? new Date(target.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '下次唤醒'}）。注意：云端通道走指令渲染（内置字体），如需位图（任意字体/大字号），请让设备与浏览器在同一局域网后直连下发。`);
+        return;
+      } catch (e) {
+        return setMessage(`云端保存失败：${e instanceof Error ? e.message : e}`);
+      }
+    }
+    // 局域网设备：浏览器直连，Web canvas 渲染静态层（任意字体字号）→ 双平面下发；动态槽位固件本地画。
     // 这是设备的默认渲染路径，之后改字体/排版只需重新下发，不用刷固件。
     const payload = framePayload(program, previewCard);
     const body = {

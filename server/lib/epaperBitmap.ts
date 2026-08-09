@@ -19,8 +19,9 @@ export const EPAPER_W = 122;
 export const EPAPER_H = 250;
 const ROW_BYTES = Math.ceil(EPAPER_W / 8); // 16
 
-// 字号档位 → 像素高度（与固件 9pt/12pt 近似；位图模式可自由用任意 px）
-export const FONT_PX: Record<number, number> = { 0: 12, 1: 12, 2: 16 };
+// 字号档位 → 像素高度（与 DOM 编辑预览 CSS 对齐：font0-4 = 15/15/21/30/40px；
+// 位图模式可自由用任意字号，Web canvas 是唯一渲染源）
+export const FONT_PX: Record<number, number> = { 0: 15, 1: 15, 2: 21, 3: 30, 4: 40 };
 
 export type RenderedFrame = {
   black: Uint8Array; // 4000 字节
