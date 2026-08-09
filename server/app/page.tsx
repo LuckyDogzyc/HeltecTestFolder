@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms, ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, makeCustomItem } from '@/lib/templates';
-import { framePayload } from '@/lib/epaperBitmap';
+import { framePayload, renderStaticFrame, LOGICAL_W, LOGICAL_H } from '@/lib/epaperBitmap';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -70,6 +70,16 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
   const deviceWidth = display.width;
   const deviceHeight = display.height;
 
+  // 真实像素预览：与下发位图同源的 canvas 渲染（所见即所得）
+  const realPreview = useMemo(() => {
+    try {
+      const frame = renderStaticFrame(program, card);
+      return frame.dataUrl;
+    } catch {
+      return '';
+    }
+  }, [program, card]);
+
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -133,6 +143,17 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
 
   return (
     <div className="epaperFrame" ref={frameRef}>
+      {realPreview && (
+        <div className="realPreviewWrap">
+          <div className="realPreviewLabel">真实渲染预览（250×122 像素，与下发一致）</div>
+          <img
+            src={realPreview}
+            alt="设备真实渲染预览"
+            style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111' }}
+          />
+          <div className="muted">此图与下发到设备的位图来自同一次 canvas 渲染；价格等动态字段在设备上会以固件字体实时更新。</div>
+        </div>
+      )}
       <div className="epaperViewport" style={{ width: deviceWidth * scale, height: deviceHeight * scale, aspectRatio: `${deviceWidth} / ${deviceHeight}` }}>
         <div className="epaper" style={{ width: deviceWidth, height: deviceHeight, transform: `scale(${scale})` }}>
           {program.filter((item) => item.visible).map((item, idx) => {
