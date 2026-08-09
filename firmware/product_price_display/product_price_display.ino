@@ -869,7 +869,7 @@ static void drawScreen(const CardPrice& card) {
   setStage("epd-init");
   SPI.begin(EPD_SCLK, -1, EPD_MOSI, EPD_CS);
   display.init(115200, true, 2, false);
-  display.setRotation(0);
+  display.setRotation(1);
   setStage("epd-refresh-start");
   // 位图模式为默认渲染路径：静态层（Web canvas 任意字体）+ 动态槽位（价格/时间固件本地画）。
   // 只要下发过一次位图，后续所有刷新（含深睡唤醒）都走位图，旧模板仅作无位图时的 fallback。
@@ -1330,8 +1330,8 @@ static void loadFrameSlots() {
 
 // 位图 + 动态槽位渲染（selectedTemplate == 5）
 // 用 GFXfont 字体数据把文字渲染进位图平面（bit 0 = 着墨）。
-// setRotation(0)：逻辑坐标 = 物理坐标（122×250 竖屏），文字横排、从上到下。
-// 字体位图 1 = 黑墨 → 写入 black 平面 bit 0。
+// 槽位坐标是逻辑 250×122（与 setRotation(1) 一致），物理落点按 rotation 1 映射：
+// (lx, ly) → (121 - ly, lx)。字体位图 1 = 黑墨 → 写入 black 平面 bit 0。
 static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
                                uint16_t lx, uint16_t ly, uint8_t color, const GFXfont* font) {
   int16_t cx = lx;
@@ -1348,10 +1348,12 @@ static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
         // 逻辑坐标（Adafruit 基线语义：glyph 顶部在 cursor.y + yOffset）
         int16_t lxx = cx + gx;
         int16_t lyy = ly + g->yOffset + gy;
-        if (lxx < 0 || lxx >= GxEPD2_213_Z98c::WIDTH_VISIBLE || lyy < 0 || lyy >= GxEPD2_213_Z98c::HEIGHT) continue;
-        // setRotation(0)：逻辑 = 物理，直映射
+        if (lxx < 0 || lxx >= 250 || lyy < 0 || lyy >= 122) continue;
+        // rotation 1 映射到物理位图
+        int16_t px = 121 - lyy;
+        int16_t py = lxx;
         uint8_t* plane = color == 1 ? red : black;
-        plane[lyy * 16 + (lxx >> 3)] &= ~(0x80 >> (lxx & 7));
+        plane[py * 16 + (px >> 3)] &= ~(0x80 >> (px & 7));
       }
     }
     cx += g->xAdvance;
@@ -1436,13 +1438,13 @@ static String statusJson() {
   body += "\"stage\":\"" + jsonEscape(lastStage) + "\"},";
   body += "\"display\":{";
   body += "\"model\":\"QYEG0213RYF661\",";
-  // 上报物理可视尺寸 122×250（setRotation(0)，逻辑坐标 = 物理坐标，竖屏文字横排）。
-  // 用常量而非 display.width()——它依赖 setRotation 是否已调用，未画屏时返回错误值。
-  body += "\"width\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
-  body += "\"height\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
+  // 上报"旋转后的逻辑可视尺寸"：固件固定 setRotation(1)，渲染坐标系恒为 250×122（横屏）。
+  // 不能用 display.width()——它依赖 setRotation 是否已调用，未画屏时 rotation=0 会返回 122×122。
+  body += "\"width\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
+  body += "\"height\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
   body += "\"colors\":3,";
-  // rotation 固定为 0（固件 setRotation(0)），不能用 display.getRotation()（未画屏时返回 0 而已）
-  body += "\"rotation\":0},";
+  // rotation 固定为 1（固件 setRotation(1)），不能用 display.getRotation()（未画屏时返回 0）
+  body += "\"rotation\":1},";
   body += "\"config\":{";
   body += "\"template\":" + String(selectedTemplate) + ",";
   body += "\"showBattery\":" + String(showBattery ? "true" : "false") + ",";

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms, ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, makeCustomItem } from '@/lib/templates';
-import { framePayload, renderStaticFrame, LOGICAL_W, LOGICAL_H } from '@/lib/epaperBitmap';
+import { framePayload, renderPreviewFrame, LOGICAL_W, LOGICAL_H } from '@/lib/epaperBitmap';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -478,11 +478,11 @@ export default function Page() {
             <div className="realPreviewWrap">
               {selectedCard ? (() => {
                 try {
-                  const frame = renderStaticFrame(program, previewCard);
+                  const preview = renderPreviewFrame(program, previewCard);
                   return (
                     <>
-                      <img src={frame.dataUrl} alt="设备真实渲染预览" style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111', maxWidth: '100%' }} />
-                      <div className="muted">与下发位图同源同一次 canvas 渲染；价格等动态字段在设备上会以固件字体实时更新（位置颜色一致，字形近似）。</div>
+                      <img src={preview} alt="设备真实渲染预览" style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111', maxWidth: '100%' }} />
+                      <div className="muted">与下发位图同源渲染；价格等动态字段在设备上会以固件字体实时更新（位置颜色一致，字形近似）。</div>
                     </>
                   );
                 } catch {
