@@ -291,14 +291,22 @@ export default function Page() {
   }
 
   async function probeIp(ip: string): Promise<LanDevice | null> {
+    // 两步探测：
+    // 1) no-cors 静默探测端口是否开放——路由器/打印机等其他开 80 端口的设备
+    //    不会刷 CORS 报错（no-cors 不触发 CORS 检查）。
+    // 2) 端口通后再 cors 确认：ESP32 固件带 Access-Control-Allow-Origin:* 头，
+    //    同网段浏览器可正常读取 status（含屏幕信息/设备名）。非 ESP32（无 CORS
+    //    头）确认失败 → 显示为"候选设备"（不误报为 ESP32）。
     try {
-      // 纯 no-cors 探测：不读响应体、不触发 CORS 检查——扫描到路由器/打印机等其他
-      // 开了 80 端口的设备时，控制台不会再刷 CORS 报错。no-cors 下 opaque 响应即"端口通"。
-      // 候选设备先显示，选中/下发时再 cors 拉取真实状态确认。
       await fetchWithTimeout(`http://${ip}/api/status`, { method: 'GET', mode: 'no-cors' }, 700);
-      return { ip, name: `候选设备 ${ip}`, deviceId: '', status: { candidate: true }, presence: 'online' };
+      const res = await fetchWithTimeout(`http://${ip}/api/status`, {}, 900);
+      if (!res.ok) return { ip, name: `候选设备 ${ip}`, deviceId: '', status: { candidate: true }, presence: 'online' };
+      const status = await res.json();
+      if (!status?.wifi && !status?.config) return { ip, name: `候选设备 ${ip}`, deviceId: '', status: { candidate: true }, presence: 'online' };
+      const display = normalizeDisplayInfo(status);
+      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `pokemon-display-${ip.split('.').pop()}`, deviceId: status.server?.deviceId || '', status, display, presence: 'online' };
     } catch {
-      return null;
+      return { ip, name: `候选设备 ${ip}`, deviceId: '', status: { candidate: true }, presence: 'online' };
     }
   }
 
@@ -372,11 +380,12 @@ export default function Page() {
     if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
     const target = lanDevices.find((d) => d.ip === selectedDeviceIp);
     if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
-    // 候选设备（no-cors 探测到的开放端口）：先 cors 确认是 ESP32 再下发，避免对路由器等误下发
+    // 候选设备（no-cors 探测到端口通，但 cors 确认失败）：
+    // 可能是非 ESP32（路由器等），或浏览器跨网段（公网 WebUI 场景）无法 cors 读内网。
     if (target?.status?.candidate) {
       try {
         const probe = await fetchWithTimeout(`http://${target.ip}/api/status`, {}, 1200);
-        if (!probe.ok) return setMessage(`设备 ${target.ip} 无响应（可能不是 ESP32 或已深睡），请确认设备在线`);
+        if (!probe.ok) return setMessage(`设备 ${target.ip} 无响应（可能不是 ESP32 或已深睡）`);
         const st = await probe.json();
         if (!st?.wifi && !st?.config) return setMessage(`设备 ${target.ip} 不是本项目的 ESP32（无 /api/status 协议），已跳过`);
         target.status = st;
@@ -387,7 +396,7 @@ export default function Page() {
         setLanDevices([...lanDevices]);
         setMessage(`已确认设备：${target.name}（${target.ip}）`);
       } catch {
-        return setMessage(`设备 ${target.ip} 连接失败，请确认设备在线（深睡中请等待唤醒窗口）`);
+        return setMessage(`设备 ${target.ip} 连接失败（浏览器可能跨网段无法直连内网）。请配置设备云端服务器地址：连接设备热点 PokemonDisplay-XXXX → http://192.168.4.1 → 服务器 URL 填 http://43.162.99.23:2300，注册后从云端设备列表管理。`);
       }
     }
     // 云端设备（浏览器无法直连 ESP32，可能跨网段/睡眠）：保存到云端，等设备唤醒时拉取。
