@@ -1408,9 +1408,9 @@ static String statusJson() {
   body += "\"stage\":\"" + jsonEscape(lastStage) + "\"},";
   body += "\"display\":{";
   body += "\"model\":\"QYEG0213RYF661\",";
-  // 上报"旋转后的可视方向"（setRotation(1) 后逻辑坐标 = 横屏 250×122），
-  // WebUI 预览/布局坐标必须与固件渲染坐标系一致，否则长宽反、拖拽错位。
-  body += "\"width\":" + String(display.width()) + ",";
+  // 上报"旋转后的逻辑可视尺寸"：固件固定 setRotation(1)，渲染坐标系恒为 250×122（横屏）。
+  // 不能用 display.width()——它依赖 setRotation 是否已调用，未画屏时 rotation=0 会返回 122×122。
+  body += "\"width\":" + String(GxEPD2_213_Z98c::HEIGHT) + ",";
   body += "\"height\":" + String(GxEPD2_213_Z98c::WIDTH_VISIBLE) + ",";
   body += "\"colors\":3,";
   body += "\"rotation\":" + String(display.getRotation()) + "},";
