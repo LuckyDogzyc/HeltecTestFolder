@@ -73,7 +73,9 @@ static const char* SEARCH_INDEX_URL =
 
 // 公网/远程 Server WebUI 只提供浏览器页面；ESP32 默认不主动轮询服务器。
 // 配置下发优先走“浏览器 -> ESP32 局域网直连”。如需调试服务器注册，可通过 /api/server 手动设置。
-static const char* DEFAULT_SERVER_BASE_URL = "";
+// 默认云端服务器：设备烧录后无需手动配置即自动注册（WebUI 云端设备列表可见）。
+// 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
+static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1603,5 +1605,12 @@ void setup() {
 void loop() {
   if (apRunning) dnsServer.processNextRequest();
   server.handleClient();
+  // 常开模式定时心跳：保持云端 lastSeen 新鲜（WebUI 显示"在线"而非过期变 offline）。
+  // 深睡设备唤醒时 setup() 已注册一次，此处间隔心跳对唤醒窗口无副作用。
+  if (!apRunning && WiFi.status() == WL_CONNECTED && serverSyncConfigured() &&
+      (millis() - lastServerHeartbeatMs >= SERVER_HEARTBEAT_INTERVAL_MS)) {
+    serverRegisterOrHeartbeat();
+    pollServerConfig();
+  }
   delay(2);
 }
