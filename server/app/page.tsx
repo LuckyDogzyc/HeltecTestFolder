@@ -292,12 +292,11 @@ export default function Page() {
 
   async function probeIp(ip: string): Promise<LanDevice | null> {
     try {
-      const res = await fetchWithTimeout(`http://${ip}/api/status`);
-      if (!res.ok) return null;
-      const status = await res.json();
-      if (!status?.wifi && !status?.config) return null;
-      const display = normalizeDisplayInfo(status);
-      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `pokemon-display-${ip.split('.').pop()}`, deviceId: status.server?.deviceId || '', status, display, presence: 'online' };
+      // 纯 no-cors 探测：不读响应体、不触发 CORS 检查——扫描到路由器/打印机等其他
+      // 开了 80 端口的设备时，控制台不会再刷 CORS 报错。no-cors 下 opaque 响应即"端口通"。
+      // 候选设备先显示，选中/下发时再 cors 拉取真实状态确认。
+      await fetchWithTimeout(`http://${ip}/api/status`, { method: 'GET', mode: 'no-cors' }, 700);
+      return { ip, name: `候选设备 ${ip}`, deviceId: '', status: { candidate: true }, presence: 'online' };
     } catch {
       return null;
     }
@@ -373,6 +372,24 @@ export default function Page() {
     if (!selectedDeviceIp) return setMessage('请先搜索并选择一台局域网设备');
     const target = lanDevices.find((d) => d.ip === selectedDeviceIp);
     if (!selectedCard?.cardKey) return setMessage('请先选择一张卡牌');
+    // 候选设备（no-cors 探测到的开放端口）：先 cors 确认是 ESP32 再下发，避免对路由器等误下发
+    if (target?.status?.candidate) {
+      try {
+        const probe = await fetchWithTimeout(`http://${target.ip}/api/status`, {}, 1200);
+        if (!probe.ok) return setMessage(`设备 ${target.ip} 无响应（可能不是 ESP32 或已深睡），请确认设备在线`);
+        const st = await probe.json();
+        if (!st?.wifi && !st?.config) return setMessage(`设备 ${target.ip} 不是本项目的 ESP32（无 /api/status 协议），已跳过`);
+        target.status = st;
+        target.deviceId = st.server?.deviceId || '';
+        target.display = normalizeDisplayInfo(st);
+        target.name = st.server?.deviceId || st.wifi?.apSsid || `pokemon-display-${target.ip.split('.').pop()}`;
+        delete target.status.candidate;
+        setLanDevices([...lanDevices]);
+        setMessage(`已确认设备：${target.name}（${target.ip}）`);
+      } catch {
+        return setMessage(`设备 ${target.ip} 连接失败，请确认设备在线（深睡中请等待唤醒窗口）`);
+      }
+    }
     // 云端设备（浏览器无法直连 ESP32，可能跨网段/睡眠）：保存到云端，等设备唤醒时拉取。
     // 固件拉取后走 renderProgram 指令路径渲染（方向已修正），位图直连下发仅限局域网设备。
     if (target?.cloudOnly) {
