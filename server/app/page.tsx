@@ -364,7 +364,9 @@ export default function Page() {
     const sleepingCount = lanDevices.filter((d) => d.presence === 'sleeping').length;
     setMessage(onlineCount
       ? `发现 ${onlineCount} 台局域网设备${sleepingCount ? `，另有 ${sleepingCount} 台注册设备在沉睡中（修改会异步同步，唤醒后生效）` : ''}`
-      : `没有发现在线设备${sleepingCount ? `，但有 ${sleepingCount} 台注册设备在沉睡中：修改会保存到云端，设备唤醒后自动更新` : '：请确认手机/电脑和 ESP32 在同一 Wi-Fi，且已烧录新版固件'}`);
+      : sleepingCount
+        ? `局域网扫描未发现在线设备（设备可能在深睡中），但云端有 ${sleepingCount} 台注册设备：可直接选择设备下发，修改会保存到云端、设备唤醒时自动应用。`
+        : '没有发现在线设备：请确认手机/电脑和 ESP32 在同一 Wi-Fi，且已烧录新版固件。若设备启用了深睡（默认 60 分钟），唤醒窗口外扫描不到是正常的——请稍候片刻或等待设备唤醒周期。');
   }
 
   async function updateDevice() {
