@@ -1329,6 +1329,37 @@ static void loadFrameSlots() {
 }
 
 // 位图 + 动态槽位渲染（selectedTemplate == 5）
+// 用 GFXfont 字体数据把文字渲染进位图平面（bit 0 = 着墨）。
+// 槽位坐标是逻辑 250×122（与 setRotation(1) 一致），物理落点按 rotation 1 映射：
+// (lx, ly) → (121 - ly, lx)。字体位图 1 = 黑墨 → 写入 black 平面 bit 0。
+static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
+                               uint16_t lx, uint16_t ly, uint8_t color, const GFXfont* font) {
+  int16_t cx = lx;
+  for (uint16_t i = 0; i < text.length(); ++i) {
+    char c = text.charAt(i);
+    if (c < font->first || c > font->last) { cx += 8; continue; }
+    const GFXglyph* g = &font->glyph[c - font->first];
+    // 清除光标上方残留（Adafruit 行为）
+    if (g->yOffset > 0) cx += g->xOffset;
+    uint8_t* glyphBits = font->bitmap + g->bitmapOffset;
+    for (uint8_t gy = 0; gy < g->height; ++gy) {
+      for (uint8_t gx = 0; gx < g->width; ++gx) {
+        if (!(glyphBits[gy * ((g->width + 7) / 8) + (gx >> 3)] & (0x80 >> (gx & 7)))) continue;
+        // 逻辑坐标（Adafruit 基线语义：glyph 顶部在 cursor.y + yOffset）
+        int16_t lxx = cx + gx;
+        int16_t lyy = ly + g->yOffset + gy;
+        if (lxx < 0 || lxx >= 250 || lyy < 0 || lyy >= 122) continue;
+        // rotation 1 映射到物理位图
+        int16_t px = 121 - lyy;
+        int16_t py = lxx;
+        uint8_t* plane = color == 1 ? red : black;
+        plane[py * 16 + (px >> 3)] &= ~(0x80 >> (px & 7));
+      }
+    }
+    cx += g->xAdvance;
+  }
+}
+
 static void drawFrameWithSlots(const CardPrice& card) {
   if (!hasFrame) return;
   File f = SPIFFS.open("/frame.bin", "r");
@@ -1342,20 +1373,19 @@ static void drawFrameWithSlots(const CardPrice& card) {
   // 整帧绘制：3 色屏必须用双平面 writeImage（writeNative 只写黑平面，会丢红色）。
   // 注意 GxEPD2 的 writeImage 要求 x 8 字节对齐：WIDTH_VISIBLE=122 → wb=16 字节行，
   // 位图按 128 宽布局（每行 16 字节，前 122 位有效），库内部处理字节对齐。
-  display.setFullWindow();
-  display.writeImage(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
-  // 叠加动态槽位
+  // 动态槽位（价格/时间）：直接渲染进位图数组（renderTextToPlanes），
+  // 不用 display.print——GxEPD2_3C 的 Adafruit 绘图走分页内存缓冲，与 writeImage
+  // 直写控制器是两套机制，混用会导致 print 的文字丢失。
   for (int i = 0; i < frameSlotCount; ++i) {
     const FrameSlot& s = frameSlots[i];
     if (!s.valid || !s.value.length()) continue;
     String v = applyRenderPlaceholders(s.value, card);
     v = fitTextToSlot(v, s.font, s.x);
     if (!v.length()) continue;
-    display.setFont(layoutFont(s.font));
-    display.setTextColor(layoutColor(s.color));
-    display.setCursor(s.x, s.y);
-    display.print(v);
+    renderTextToPlanes(black, red, v, s.x, s.y, s.color, layoutFont(s.font));
   }
+  display.setFullWindow();
+  display.writeImage(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
   display.refresh();
   display.hibernate(); // 位图路径同样要断电休眠，省电
   free(black);

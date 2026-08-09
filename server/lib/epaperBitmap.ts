@@ -41,7 +41,8 @@ function packPixel(plane: Uint8Array, physX: number, physY: number, set: boolean
   if (set) plane[physY * ROW_BYTES + (physX >> 3)] &= ~(0x80 >> (physX & 7));
 }
 
-// 渲染一帧：把 program 中非动态元素画到位图上（动态元素跳过，留给固件实时画）
+// 渲染一帧：把 program 中非动态元素画到位图上（价格/时间等动态字段由固件在每次
+// 唤醒时用内置字体渲染进位图，见固件 renderTextToPlanes——保证价格实时更新）。
 // canvas 用逻辑坐标 250×122（与固件 setRotation(1) 渲染坐标系一致），
 // 输出时按 rotation 1 映射 (logicalX, logicalY) → (121 - logicalY, logicalX) 转物理 122×250 位图。
 export function renderStaticFrame(program: RenderCommand[], card: CardSample, fontFamily = 'monospace'): RenderedFrame {
