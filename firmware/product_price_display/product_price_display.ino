@@ -1118,11 +1118,52 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     lastError = "No WiFi";
   }
   if (ok || drawEvenIfFail) drawScreen(currentCard);
+  if (ok) prefs.putString("lastFp", contentFingerprint(currentCard)); // 同步内容指纹，唤醒对比用
   lastRefreshMs = millis();
   Serial.printf("Refresh %s in %lums\n", ok ? "OK" : "FAILED", (unsigned long)(millis() - start));
   setStage(ok ? "refresh-ok" : "refresh-failed");
   refreshInProgress = false;
   return ok;
+}
+
+// 上次成功刷屏的内容指纹：配置版本 + 价格。位图/指令程序变更会通过清除 lastFp 强制下次重绘。
+static String contentFingerprint(const CardPrice& card) {
+  return String("v") + serverConfigVersion + "|" + card.marketPrice;
+}
+
+// 深睡唤醒内容对比：先拉云端配置（可能有变更），再取价，与上次显示内容比对，
+// 无变化则跳过 e-paper 整屏重绘直接入睡（三色屏刷新=闪烁+耗电，避免每次唤醒都闪）。
+// 取数失败也跳过重绘（保留上次画面，下次唤醒重试），不刷 NO DATA。
+static void refreshIfChangedAtWake(bool configAlreadyChecked) {
+  setStage("wake-check");
+  if (WiFi.status() != WL_CONNECTED) {
+    lastError = "No WiFi";
+    return;
+  }
+  if (!configAlreadyChecked) pollServerConfig(); // 配置变更时 applyServerConfigJson 已清旧位图并更新版本号
+  if (refreshInProgress) return;
+  const uint32_t start = millis();
+  powerState = readBatteryVoltage();
+  bool ok = selectedDataUrl.length() ? fetchSelectedCardFromDataUrl(currentCard) : fetchSelectedCardFromBucket(currentCard);
+  if (!ok) {
+    lastRefreshMs = millis();
+    setStage("wake-skip-fetch-failed");
+    Serial.printf("Wake fetch failed (%s); keep last screen, skip refresh\n", lastError.c_str());
+    return;
+  }
+  String fp = contentFingerprint(currentCard);
+  String lastFp = prefs.getString("lastFp", "");
+  if (fp == lastFp) {
+    lastRefreshMs = millis();
+    setStage("wake-skip-unchanged");
+    Serial.println("Content unchanged; skip e-paper refresh at wake");
+    return;
+  }
+  drawScreen(currentCard);
+  prefs.putString("lastFp", fp);
+  lastRefreshMs = millis();
+  setStage("wake-refreshed");
+  Serial.printf("Wake refresh OK (content changed) in %lums\n", (unsigned long)(millis() - start));
 }
 
 // ===== 深睡眠 =====
@@ -1465,6 +1506,7 @@ static void setupRoutes() {
       frameSlotCount = 0;
       Serial.println("Frame cleared: renderProgram mode");
     }
+    if (ok) prefs.remove("lastFp"); // 内容已变，强制下次唤醒重绘（即使价格未变）
     bool refreshNow = ok && jsonBoolField(body, "refresh", false);
     if (refreshNow) ok = refreshCardAndScreen(true);
     String err = refreshNow ? lastError : lastServerError;
@@ -1497,6 +1539,7 @@ static void setupRoutes() {
     if (ok) {
       selectedTemplate = 5; // 位图模式
       prefs.putInt("template", 5);
+      prefs.remove("lastFp"); // 新位图已保存，强制下次唤醒重绘（即使价格未变）
       bool refreshNow = jsonBoolField(body, "refresh", false);
       if (refreshNow) ok = refreshCardAndScreen(true);
       String err = refreshNow ? lastError : "";
@@ -1610,9 +1653,9 @@ void setup() {
     Serial.println("Boot auto refresh disabled; use WebUI button to refresh screen.");
   }
 
-  // 深睡模式：唤醒后自动取价刷屏，完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
+  // 深睡模式：唤醒后取价刷屏（内容无变化则跳过重绘避免闪屏），完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
   if (sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED) {
-    if (!BOOT_AUTO_REFRESH) refreshCardAndScreen(true); // 深睡循环必须开机刷新
+    if (!BOOT_AUTO_REFRESH) refreshIfChangedAtWake(true); // 深睡循环：内容有变化才刷屏（开机块已 poll 过配置）
     enterDeepSleep();
   }
 }
