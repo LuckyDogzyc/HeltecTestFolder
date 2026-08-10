@@ -78,6 +78,8 @@ static const char* SEARCH_INDEX_URL =
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
 
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3+2ca7d6a"; // 构建指纹：源码提交哈希，崩溃日志可对照
+static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
 static constexpr int EPD_RST  = 26;
@@ -1002,7 +1004,7 @@ static bool serverRegisterOrHeartbeat() {
   payload += "\"deviceId\":\"" + jsonEscape(deviceId) + "\",";
   payload += "\"factoryName\":\"PokemonDisplay-" + macSuffix() + "\",";
   payload += "\"lanIp\":\"" + WiFi.localIP().toString() + "\",";
-  payload += "\"firmware\":\"product-price-display-0.2\",";
+  payload += "\"firmware\":\"" + String(FIRMWARE_VERSION) + "\",";
   payload += "\"status\":{";
   payload += "\"stage\":\"" + jsonEscape(lastStage) + "\",";
   payload += "\"productId\":" + String(selectedProductId) + ",";
@@ -1160,7 +1162,9 @@ static void refreshIfChangedAtWake(bool configAlreadyChecked) {
   if (refreshInProgress) return;
   const uint32_t start = millis();
   powerState = readBatteryVoltage();
+  Serial.printf("[wake] heap before fetch=%lu\n", (unsigned long)ESP.getFreeHeap());
   bool ok = selectedDataUrl.length() ? fetchSelectedCardFromDataUrl(currentCard) : fetchSelectedCardFromBucket(currentCard);
+  Serial.printf("[wake] heap after fetch=%lu ok=%d\n", (unsigned long)ESP.getFreeHeap(), ok ? 1 : 0);
   if (!ok) {
     lastRefreshMs = millis();
     setStage("wake-skip-fetch-failed");
@@ -1175,7 +1179,9 @@ static void refreshIfChangedAtWake(bool configAlreadyChecked) {
     Serial.println("Content unchanged; skip e-paper refresh at wake");
     return;
   }
+  Serial.printf("[wake] heap before draw=%lu\n", (unsigned long)ESP.getFreeHeap());
   drawScreen(currentCard);
+  Serial.printf("[wake] heap after draw=%lu\n", (unsigned long)ESP.getFreeHeap());
   prefs.putString("lastFp", fp);
   lastRefreshMs = millis();
   setStage("wake-refreshed");
@@ -1624,6 +1630,7 @@ void setup() {
   delay(500);
   Serial.println();
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
+  Serial.printf("Build: %s (%s) freeHeap=%lu\n", FIRMWARE_VERSION, BUILD_TAG, (unsigned long)ESP.getFreeHeap());
   loadConfig();
   ensureDeviceIdentity();
   Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s server=%s deviceId=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false", serverBaseUrl.c_str(), deviceId.c_str());
