@@ -78,7 +78,7 @@ static const char* SEARCH_INDEX_URL =
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
 
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3+3413d39"; // 构建指纹：源码提交哈希，崩溃日志可对照
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3+d1322cb"; // 构建指纹：源码提交哈希，崩溃日志可对照
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
