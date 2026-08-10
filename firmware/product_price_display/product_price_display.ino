@@ -257,6 +257,13 @@ static void loadConfig() {
   deviceId = prefs.getString("devId", "");
   deviceKey = prefs.getString("devKey", "");
   serverConfigVersion = prefs.getInt("srvVer", 0);
+  // 自愈：NVS 里的版本号曾被毒化成 2147483647（INT32_MAX），服务器判断 current >= configVersion
+  // 会永远回 304，云端更新再也无法下发。异常版本号开机重置为 0，下次 poll 重新拿 200 全量同步。
+  if (serverConfigVersion > 100000) {
+    Serial.printf("Healing corrupted srvVer=%d -> 0\n", serverConfigVersion);
+    serverConfigVersion = 0;
+    prefs.putInt("srvVer", 0);
+  }
   serverTemplateId = prefs.getString("srvTpl", "");
   selectedCardKey = prefs.getString("cardKey", "");
   selectedSourceId = prefs.getString("srcId", "");
@@ -895,6 +902,13 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
 
 static bool applyServerConfigJson(const String& body) {
   int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
+  // 防御：拒绝异常版本号（曾出现解析成 2147483647 导致服务器永远 304 的毒化事故），
+  // 解析失败/越界时不应用该配置，避免 srvVer 再次被写入异常值。
+  if (newVersion < 1 || newVersion > 100000) {
+    lastServerError = String("Bad configVersion ") + newVersion;
+    Serial.printf("Rejected server config: bad configVersion=%d\n", newVersion);
+    return false;
+  }
   long newProductId = jsonIntField(body, "productId", selectedProductId);
   String newCardKey = jsonStringField(body, "cardKey");
   String newSourceId = jsonStringField(body, "sourceId");
