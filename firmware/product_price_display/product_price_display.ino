@@ -546,8 +546,8 @@ static bool fetchSelectedCardFromBucket(CardPrice& card) {
     }
     if (!csvLineMatchesSelectedId(line)) continue;
 
-    String f[9];
-    if (!parseCsvLine(line, f, 9)) {
+    String f[10];
+    if (!parseCsvLine(line, f, 10)) {
       lastError = "CSV parse failed";
       http.end();
       return false;
@@ -557,11 +557,13 @@ static bool fetchSelectedCardFromBucket(CardPrice& card) {
     card.setName = f[1];
     card.productName = f[2];
     card.rarity = f[3];
-    card.subTypeName = f[4];
-    card.marketPrice = f[5].length() ? f[5] : "--";
-    card.midPrice = f[6].length() ? f[6] : "--";
-    card.lowPrice = f[7].length() ? f[7] : "--";
-    card.highPrice = f[8].length() ? f[8] : "--";
+    // f[4] = cardNumber（2026-07-28 数据 Action 起 CSV 新增该列，固件无需使用）。
+    // 若不跳过会导致后面所有字段错位一列：价格会显示成副类型名（如 "Normal"）。
+    card.subTypeName = f[5];
+    card.marketPrice = f[6].length() ? f[6] : "--";
+    card.midPrice = f[7].length() ? f[7] : "--";
+    card.lowPrice = f[8].length() ? f[8] : "--";
+    card.highPrice = f[9].length() ? f[9] : "--";
     card.scannedLines = lines;
     card.bucket = bucket;
     lastError = "";
