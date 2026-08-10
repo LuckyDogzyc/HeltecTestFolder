@@ -1677,9 +1677,14 @@ void setup() {
   }
 
   // 深睡模式：唤醒后取价刷屏（内容无变化则跳过重绘避免闪屏），完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
-  if (sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED) {
+  // 硬性约束：NVS 里没有 Wi-Fi 配置（savedSsid 为空）时绝不深睡——设备必须保持 AP 常开等配网。
+  if (sleepMin > 0 && savedSsid.length() && !apRunning && WiFi.status() == WL_CONNECTED) {
     if (!BOOT_AUTO_REFRESH) refreshIfChangedAtWake(true); // 深睡循环：内容有变化才刷屏（开机块已 poll 过配置）
     enterDeepSleep();
+  } else if (!savedSsid.length()) {
+    Serial.println("No Wi-Fi configured: AP setup mode, staying awake until configured");
+  } else if (apRunning) {
+    Serial.println("AP always-on (alwaysSetupAP=true): deep sleep disabled, staying awake");
   }
 }
 
