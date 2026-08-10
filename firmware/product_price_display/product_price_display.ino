@@ -948,6 +948,15 @@ static bool applyServerConfigJson(const String& body) {
   prefs.putInt("srvVer", serverConfigVersion);
   prefs.putString("srvTpl", serverTemplateId);
   saveRenderProgramConfig();
+  // 指令模式与位图模式互斥（与 /api/render-program 通道一致）：云端新配置到达时清除旧位图，
+  // 否则 drawScreen 的 hasFrame 优先分支会一直画残留的 /frame.bin，云端更新永远不显示。
+  if (hasFrame) {
+    SPIFFS.remove("/frame.bin");
+    hasFrame = false;
+    prefs.remove("frameSlots");
+    frameSlotCount = 0;
+    Serial.println("Frame cleared: server config mode");
+  }
   lastServerError = "";
   Serial.printf("Applied server config v%d cardKey=%s dataUrl=%s commands=%d template=%s\n", serverConfigVersion, selectedCardKey.c_str(), selectedDataUrl.c_str(), renderProgramCount, serverTemplateId.c_str());
   return true;
@@ -1584,7 +1593,13 @@ void setup() {
   // serverBaseUrl 为空时此调用直接返回 false（无副作用），不影响局域网直连模式。
   if (WiFi.status() == WL_CONNECTED) {
     serverRegisterOrHeartbeat();
-    pollServerConfig();
+    bool serverConfigChanged = pollServerConfig();
+    // 云端配置有更新（"已保存到云端…唤醒后将自动应用"）：开机只在这种情况刷一次屏，
+    // 平时开机依旧不刷，避免阻塞 AP 配网页/captive portal 响应。
+    if (serverConfigChanged && !BOOT_AUTO_REFRESH && sleepMin == 0) {
+      Serial.println("Server config changed; refreshing screen at boot");
+      refreshCardAndScreen(true);
+    }
   }
 
   if (BOOT_AUTO_REFRESH) {
