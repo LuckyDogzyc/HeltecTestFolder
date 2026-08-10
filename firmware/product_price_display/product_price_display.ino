@@ -77,9 +77,9 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3+d1322cb"; // 构建指纹：源码提交哈希，崩溃日志可对照
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-stable-rollback";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
+
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
 static constexpr int EPD_RST  = 26;
@@ -259,8 +259,8 @@ static void loadConfig() {
   deviceId = prefs.getString("devId", "");
   deviceKey = prefs.getString("devKey", "");
   serverConfigVersion = prefs.getInt("srvVer", 0);
-  // 自愈：NVS 里的版本号曾被毒化成 2147483647（INT32_MAX），服务器判断 current >= configVersion
-  // 会永远回 304，云端更新再也无法下发。异常版本号开机重置为 0，下次 poll 重新拿 200 全量同步。
+  // NVS 自愈：曾出现 srvVer 被毒化为 INT32_MAX，导致服务器永远返回 304。
+  // 不再依赖整片擦除；异常版本号直接回到 0，下次 poll 获取全量配置。
   if (serverConfigVersion > 100000) {
     Serial.printf("Healing corrupted srvVer=%d -> 0\n", serverConfigVersion);
     serverConfigVersion = 0;
@@ -559,8 +559,7 @@ static bool fetchSelectedCardFromBucket(CardPrice& card) {
     card.setName = f[1];
     card.productName = f[2];
     card.rarity = f[3];
-    // f[4] = cardNumber（2026-07-28 数据 Action 起 CSV 新增该列，固件无需使用）。
-    // 若不跳过会导致后面所有字段错位一列：价格会显示成副类型名（如 "Normal"）。
+    // f[4] = cardNumber（数据 Action 新增列）；价格字段从 f[6] 开始。
     card.subTypeName = f[5];
     card.marketPrice = f[6].length() ? f[6] : "--";
     card.midPrice = f[7].length() ? f[7] : "--";
@@ -906,8 +905,6 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
 
 static bool applyServerConfigJson(const String& body) {
   int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
-  // 防御：拒绝异常版本号（曾出现解析成 2147483647 导致服务器永远 304 的毒化事故），
-  // 解析失败/越界时不应用该配置，避免 srvVer 再次被写入异常值。
   if (newVersion < 1 || newVersion > 100000) {
     lastServerError = String("Bad configVersion ") + newVersion;
     Serial.printf("Rejected server config: bad configVersion=%d\n", newVersion);
@@ -966,15 +963,6 @@ static bool applyServerConfigJson(const String& body) {
   prefs.putInt("srvVer", serverConfigVersion);
   prefs.putString("srvTpl", serverTemplateId);
   saveRenderProgramConfig();
-  // 指令模式与位图模式互斥（与 /api/render-program 通道一致）：云端新配置到达时清除旧位图，
-  // 否则 drawScreen 的 hasFrame 优先分支会一直画残留的 /frame.bin，云端更新永远不显示。
-  if (hasFrame) {
-    SPIFFS.remove("/frame.bin");
-    hasFrame = false;
-    prefs.remove("frameSlots");
-    frameSlotCount = 0;
-    Serial.println("Frame cleared: server config mode");
-  }
   lastServerError = "";
   Serial.printf("Applied server config v%d cardKey=%s dataUrl=%s commands=%d template=%s\n", serverConfigVersion, selectedCardKey.c_str(), selectedDataUrl.c_str(), renderProgramCount, serverTemplateId.c_str());
   return true;
@@ -1136,56 +1124,11 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
     lastError = "No WiFi";
   }
   if (ok || drawEvenIfFail) drawScreen(currentCard);
-  if (ok) prefs.putString("lastFp", contentFingerprint(currentCard)); // 同步内容指纹，唤醒对比用
   lastRefreshMs = millis();
   Serial.printf("Refresh %s in %lums\n", ok ? "OK" : "FAILED", (unsigned long)(millis() - start));
   setStage(ok ? "refresh-ok" : "refresh-failed");
   refreshInProgress = false;
   return ok;
-}
-
-// 上次成功刷屏的内容指纹：配置版本 + 价格。位图/指令程序变更会通过清除 lastFp 强制下次重绘。
-static String contentFingerprint(const CardPrice& card) {
-  return String("v") + serverConfigVersion + "|" + card.marketPrice;
-}
-
-// 深睡唤醒内容对比：先拉云端配置（可能有变更），再取价，与上次显示内容比对，
-// 无变化则跳过 e-paper 整屏重绘直接入睡（三色屏刷新=闪烁+耗电，避免每次唤醒都闪）。
-// 取数失败也跳过重绘（保留上次画面，下次唤醒重试），不刷 NO DATA。
-static void refreshIfChangedAtWake(bool configAlreadyChecked) {
-  setStage("wake-check");
-  if (WiFi.status() != WL_CONNECTED) {
-    lastError = "No WiFi";
-    return;
-  }
-  if (!configAlreadyChecked) pollServerConfig(); // 配置变更时 applyServerConfigJson 已清旧位图并更新版本号
-  if (refreshInProgress) return;
-  const uint32_t start = millis();
-  powerState = readBatteryVoltage();
-  Serial.printf("[wake] heap before fetch=%lu\n", (unsigned long)ESP.getFreeHeap());
-  bool ok = selectedDataUrl.length() ? fetchSelectedCardFromDataUrl(currentCard) : fetchSelectedCardFromBucket(currentCard);
-  Serial.printf("[wake] heap after fetch=%lu ok=%d\n", (unsigned long)ESP.getFreeHeap(), ok ? 1 : 0);
-  if (!ok) {
-    lastRefreshMs = millis();
-    setStage("wake-skip-fetch-failed");
-    Serial.printf("Wake fetch failed (%s); keep last screen, skip refresh\n", lastError.c_str());
-    return;
-  }
-  String fp = contentFingerprint(currentCard);
-  String lastFp = prefs.getString("lastFp", "");
-  if (fp == lastFp) {
-    lastRefreshMs = millis();
-    setStage("wake-skip-unchanged");
-    Serial.println("Content unchanged; skip e-paper refresh at wake");
-    return;
-  }
-  Serial.printf("[wake] heap before draw=%lu\n", (unsigned long)ESP.getFreeHeap());
-  drawScreen(currentCard);
-  Serial.printf("[wake] heap after draw=%lu\n", (unsigned long)ESP.getFreeHeap());
-  prefs.putString("lastFp", fp);
-  lastRefreshMs = millis();
-  setStage("wake-refreshed");
-  Serial.printf("Wake refresh OK (content changed) in %lums\n", (unsigned long)(millis() - start));
 }
 
 // ===== 深睡眠 =====
@@ -1528,7 +1471,6 @@ static void setupRoutes() {
       frameSlotCount = 0;
       Serial.println("Frame cleared: renderProgram mode");
     }
-    if (ok) prefs.remove("lastFp"); // 内容已变，强制下次唤醒重绘（即使价格未变）
     bool refreshNow = ok && jsonBoolField(body, "refresh", false);
     if (refreshNow) ok = refreshCardAndScreen(true);
     String err = refreshNow ? lastError : lastServerError;
@@ -1561,7 +1503,6 @@ static void setupRoutes() {
     if (ok) {
       selectedTemplate = 5; // 位图模式
       prefs.putInt("template", 5);
-      prefs.remove("lastFp"); // 新位图已保存，强制下次唤醒重绘（即使价格未变）
       bool refreshNow = jsonBoolField(body, "refresh", false);
       if (refreshNow) ok = refreshCardAndScreen(true);
       String err = refreshNow ? lastError : "";
@@ -1659,13 +1600,7 @@ void setup() {
   // serverBaseUrl 为空时此调用直接返回 false（无副作用），不影响局域网直连模式。
   if (WiFi.status() == WL_CONNECTED) {
     serverRegisterOrHeartbeat();
-    bool serverConfigChanged = pollServerConfig();
-    // 云端配置有更新（"已保存到云端…唤醒后将自动应用"）：开机只在这种情况刷一次屏，
-    // 平时开机依旧不刷，避免阻塞 AP 配网页/captive portal 响应。
-    if (serverConfigChanged && !BOOT_AUTO_REFRESH && sleepMin == 0) {
-      Serial.println("Server config changed; refreshing screen at boot");
-      refreshCardAndScreen(true);
-    }
+    pollServerConfig();
   }
 
   if (BOOT_AUTO_REFRESH) {
@@ -1676,15 +1611,10 @@ void setup() {
     Serial.println("Boot auto refresh disabled; use WebUI button to refresh screen.");
   }
 
-  // 深睡模式：唤醒后取价刷屏（内容无变化则跳过重绘避免闪屏），完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
-  // 硬性约束：NVS 里没有 Wi-Fi 配置（savedSsid 为空）时绝不深睡——设备必须保持 AP 常开等配网。
-  if (sleepMin > 0 && savedSsid.length() && !apRunning && WiFi.status() == WL_CONNECTED) {
-    if (!BOOT_AUTO_REFRESH) refreshIfChangedAtWake(true); // 深睡循环：内容有变化才刷屏（开机块已 poll 过配置）
+  // 深睡模式：唤醒后自动取价刷屏，完成后立即入睡；AP 配网模式/未连 WiFi 时保持常开。
+  if (sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED) {
+    if (!BOOT_AUTO_REFRESH) refreshCardAndScreen(true); // 深睡循环必须开机刷新
     enterDeepSleep();
-  } else if (!savedSsid.length()) {
-    Serial.println("No Wi-Fi configured: AP setup mode, staying awake until configured");
-  } else if (apRunning) {
-    Serial.println("AP always-on (alwaysSetupAP=true): deep sleep disabled, staying awake");
   }
 }
 
