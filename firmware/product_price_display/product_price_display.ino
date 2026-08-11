@@ -49,10 +49,9 @@ static constexpr bool DEBUG_USE_CODE_WIFI = false;
 const char* DEBUG_WIFI_SSID = "你的调试WiFi";
 const char* DEBUG_WIFI_PASS = "你的调试密码";
 
-// 当前是常开/WebUI 调试阶段：即使已保存 Wi-Fi，也始终开启 AP Setup Portal。
-// 这样手机总能连 PokemonDisplay-XXXX 做首次配网；家庭 Wi-Fi 下访问 STA IP 进入管理后台。
-// 未来接入物理开关/deep sleep 后，可在省电模式关闭此项。
-static constexpr bool ALWAYS_START_SETUP_AP = true;
+// 省电/生产模式：没有 Wi-Fi 配置或连接失败时才开启 AP Setup Portal。
+// 已连上家庭 Wi-Fi 后关闭热点，允许 deep sleep 条件成立。
+static constexpr bool ALWAYS_START_SETUP_AP = false;
 
 // 深睡眠：每次唤醒完成"心跳+取价+刷屏"后进入 esp_deep_sleep。
 // 唤醒周期 sleepMin 存 NVS（默认 60 分钟，0 = 禁用深睡，保持常连调试）。

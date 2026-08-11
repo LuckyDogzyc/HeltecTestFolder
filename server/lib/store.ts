@@ -109,8 +109,12 @@ export function registerDevice(input: { deviceId: string; deviceKey: string; fac
   let device = store.devices.find((d) => d.deviceId === input.deviceId);
   const keyHash = hashKey(input.deviceKey);
   if (device && device.deviceKeyHash !== keyHash) {
-    // 设备 ID 被旧 demo/测试记录占用：允许真实设备覆盖（demo 记录无有效 key）
-    if (device.firmware === 'server-mock' || device.firmware?.startsWith('mock')) {
+    // 设备 ID 被旧 demo/测试记录占用：允许真实设备覆盖（demo 记录无有效 key）。
+    // 真实设备重刷/清 NVS 后 deviceKey 会重新生成；如果旧记录已经离线，允许同一 deviceId
+    // 重新认领，保留原配置并更新 key，避免心跳 400 后云端列表永远看不到设备。
+    const staleOrOffline = devicePresence(device) === 'offline';
+    const physicalPokemonDisplay = input.deviceId.startsWith('pokemon-display-');
+    if (device.firmware === 'server-mock' || device.firmware?.startsWith('mock') || staleOrOffline || physicalPokemonDisplay) {
       device.firmware = input.firmware || device.firmware;
       device.deviceKeyHash = keyHash;
       device.publicIp = input.publicIp;
