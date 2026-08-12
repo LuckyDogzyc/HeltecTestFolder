@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitTextToDeviceSlot, normalizeTitle, renderValue, sampleCard, templateLabels, templatePrograms, ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, makeCustomItem } from '@/lib/templates';
-import { framePayload, renderPreviewFrame, LOGICAL_W, LOGICAL_H } from '@/lib/epaperBitmap';
+import { framePayload, LOGICAL_W, LOGICAL_H } from '@/lib/epaperBitmap';
+import { renderDevicePreviewFrame } from '@/lib/devicePreview';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -66,6 +67,10 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
   const [scale, setScale] = useState(2);
   const deviceWidth = display.width;
   const deviceHeight = display.height;
+  // The editor canvas uses the same pixel replay as the true-preview card.
+  // DOM text is intentionally not used here: browser Courier metrics cannot
+  // represent ESP32 GFX glyph offsets or right/bottom clipping accurately.
+  const rasterPreview = renderDevicePreviewFrame(program, card);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -94,9 +99,11 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
     const startY = ev.clientY;
     const origin = program[index];
     function move(e: PointerEvent) {
-      const dx = Math.round((e.clientX - startX) / scale / 4) * 4;
-      const dy = Math.round((e.clientY - startY) / scale / 4) * 4;
-      const next = program.map((item, i) => i === index ? { ...item, x: Math.max(0, Math.min(deviceWidth - 1, origin.x + dx)), y: Math.max(0, Math.min(deviceHeight - 1, origin.y + dy)) } : item);
+      // 1 panel pixel per pointer-pixel/scale. Do not clamp: all four edges
+      // clip naturally on the panel, so left/top must be movable off-canvas too.
+      const dx = Math.round((e.clientX - startX) / scale);
+      const dy = Math.round((e.clientY - startY) / scale);
+      const next = program.map((item, i) => i === index ? { ...item, x: origin.x + dx, y: origin.y + dy } : item);
       applyChange(next);
     }
     function up() {
@@ -132,6 +139,7 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
     <div className="epaperFrame" ref={frameRef}>
       <div className="epaperViewport" style={{ width: deviceWidth * scale, height: deviceHeight * scale, aspectRatio: `${deviceWidth} / ${deviceHeight}` }}>
         <div className="epaper" style={{ width: deviceWidth, height: deviceHeight, transform: `scale(${scale})` }}>
+          <img className="epaperRaster" src={rasterPreview} alt="设备像素布局画布" draggable={false} />
           {program.filter((item) => item.visible).map((item, idx) => {
             const originalIndex = program.indexOf(item);
             const isSelected = editable && selected === originalIndex;
@@ -140,13 +148,13 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
                 key={`${item.value}-${idx}`}
                 onPointerDown={(ev) => beginDrag(originalIndex, ev)}
                 onClick={() => setSelected(originalIndex)}
-                className={`${editable ? 'dragItem' : 'epaperText'} ${item.color === 1 ? 'red' : 'black'} font${item.font} ${isSelected ? 'selected' : ''}`}
+                className={`${editable ? 'dragItem dragHit' : 'epaperText'} font${item.font} ${isSelected ? 'selected' : ''}`}
                 style={{
                   left: item.x,
                   top: item.y,
                 }}
               >
-                {fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x, deviceWidth)}
+                {editable && <span className="dragLabel">{fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x, deviceWidth)}</span>}
                 {isSelected && editable && (
                   <span
                     className="fontHandle"
@@ -207,6 +215,8 @@ function ProgramEditor({ program, card, display, onChange }: { program: RenderCo
               <select aria-label="颜色" value={item.color} onChange={(e) => update(index, { color: Number(e.target.value) as 0 | 1 })}>
                 <option value={0}>黑色</option><option value={1}>红色</option>
               </select>
+              <label className="coordInput">X<input aria-label={`元素 ${index + 1} X 坐标`} type="number" step="1" value={item.x} onChange={(e) => update(index, { x: Number(e.target.value) || 0 })} /></label>
+              <label className="coordInput">Y<input aria-label={`元素 ${index + 1} Y 坐标`} type="number" step="1" value={item.y} onChange={(e) => update(index, { y: Number(e.target.value) || 0 })} /></label>
               <button type="button" className="secondary removeBtn" onClick={() => removeAt(index)}>删除</button>
             </div>
           );
@@ -531,15 +541,15 @@ export default function Page() {
             <div className="templateTabs">{Object.entries(templateLabels).map(([id, label]) => <button key={id} className={templateId === id ? 'active' : 'secondary'} onClick={() => chooseTemplate(id)}>{label}</button>)}</div>
           </div>
           <div className="card previewCard">
-            <div className="sectionTitle"><h2>4、真实渲染预览</h2><span className="muted">与下发到设备的位图完全一致（122×250 像素，三色）</span></div>
+            <div className="sectionTitle"><h2>4、真实渲染预览</h2><span className="muted">按设备双平面和 Adafruit 字模逐像素回放（250×122）</span></div>
             <div className="realPreviewWrap">
               {selectedCard ? (() => {
                 try {
-                  const preview = renderPreviewFrame(program, previewCard);
+                  const preview = renderDevicePreviewFrame(program, previewCard);
                   return (
                     <>
                       <img src={preview} alt="设备真实渲染预览" style={{ width: LOGICAL_W * 2, height: LOGICAL_H * 2, imageRendering: 'pixelated', border: '1px solid #111', maxWidth: '100%' }} />
-                      <div className="muted">与下发位图同源渲染；价格等动态字段在设备上会以固件字体实时更新（位置颜色一致，字形近似）。</div>
+                      <div className="muted">静态层解码自实际下发的双平面；价格/时间/日期使用与 ESP32 相同的 FreeMonoBold 字模、偏移、裁切和连续 bit 流规则回放。</div>
                     </>
                   );
                 } catch {

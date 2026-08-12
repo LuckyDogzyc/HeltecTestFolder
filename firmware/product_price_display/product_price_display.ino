@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.4-bitshift-fix";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.5-unclamped-layout";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -122,8 +122,8 @@ struct PowerState {
 static constexpr int RENDER_CMD_MAX = 20;
 struct RenderCommand {
   bool visible;
-  uint8_t x;
-  uint8_t y;
+  int16_t x;         // 可为负：四边均允许自然裁切，不在解析/存储层钳位
+  int16_t y;
   int8_t font;       // -1 小字(≈8px) 0 9pt, 1 9pt, 2 12pt, 3 18pt, 4 24pt
   uint8_t color;     // 0 black, 1 red
   bool wrap;         // true: 超宽自动换行
@@ -142,8 +142,8 @@ static constexpr int FRAME_PLANE_BYTES = 4000;          // 122×250 / 8 每平�
 static constexpr int FRAME_SLOT_MAX = 8;
 struct FrameSlot {
   bool valid;
-  uint8_t x;
-  uint8_t y;
+  int16_t x;         // 可为负：与 WebUI 编辑器一致，四边自然裁切
+  int16_t y;
   int8_t font;
   uint8_t color;
   String value;  // 占位符模板，如 "${market}"、"L ${low}"、"HH:MM {time}"
@@ -303,8 +303,8 @@ static void loadRenderProgramConfig() {
   renderProgramCount = constrain(prefs.getInt("rpCount", 0), 0, RENDER_CMD_MAX);
   for (int i = 0; i < renderProgramCount; ++i) {
     renderProgram[i].visible = prefs.getBool((String("rp") + i + "v").c_str(), true);
-    renderProgram[i].x = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "x").c_str(), 0), 0, 249);
-    renderProgram[i].y = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "y").c_str(), 0), 0, 121);
+    renderProgram[i].x = (int16_t)constrain(prefs.getShort((String("rp") + i + "x").c_str(), 0), -1024, 1024);
+    renderProgram[i].y = (int16_t)constrain(prefs.getShort((String("rp") + i + "y").c_str(), 0), -1024, 1024);
     renderProgram[i].font = (int8_t)constrain(prefs.getChar((String("rp") + i + "f").c_str(), 0), -1, 4);
     renderProgram[i].color = (uint8_t)constrain(prefs.getUChar((String("rp") + i + "c").c_str(), 0), 0, 1);
     renderProgram[i].wrap = prefs.getBool((String("rp") + i + "w").c_str(), false);
@@ -315,11 +315,12 @@ static void loadRenderProgramConfig() {
 }
 
 static void saveRenderProgramConfig() {
+  prefs.putUChar("coordV", 2); // v2 coordinates are signed int16 (v1 was uint8)
   prefs.putInt("rpCount", renderProgramCount);
   for (int i = 0; i < renderProgramCount; ++i) {
     prefs.putBool((String("rp") + i + "v").c_str(), renderProgram[i].visible);
-    prefs.putUChar((String("rp") + i + "x").c_str(), renderProgram[i].x);
-    prefs.putUChar((String("rp") + i + "y").c_str(), renderProgram[i].y);
+    prefs.putShort((String("rp") + i + "x").c_str(), renderProgram[i].x);
+    prefs.putShort((String("rp") + i + "y").c_str(), renderProgram[i].y);
     prefs.putChar((String("rp") + i + "f").c_str(), renderProgram[i].font);
     prefs.putUChar((String("rp") + i + "c").c_str(), renderProgram[i].color);
     prefs.putBool((String("rp") + i + "w").c_str(), renderProgram[i].wrap);
@@ -696,7 +697,7 @@ static uint8_t approxCharWidth(int8_t font) {
 
 // 仅换行模式使用：按字符宽度把当前剩余文本切成一行（不再缩写/截断内容本身，
 // 非换行渲染直接画完整文本，超出屏幕由面板自然裁剪）。
-static String fitTextToSlot(String value, int8_t font, uint8_t x) {
+static String fitTextToSlot(String value, int8_t font, int16_t x) {
   uint8_t cw = approxCharWidth(font);
   int maxChars = (250 - x) / cw;
   if (maxChars < 4) maxChars = 4;
@@ -971,8 +972,8 @@ static void parseFrameSlots(const String& json, int from) {
     FrameSlot& s = frameSlots[frameSlotCount];
     s.valid = true;
     s.value = jsonStringField(json, "value", start);
-    s.x = (uint8_t)constrain(jsonIntField(json, "x", 0, start), 0, 249);
-    s.y = (uint8_t)constrain(jsonIntField(json, "y", 0, start), 0, 121);
+    s.x = (int16_t)constrain(jsonIntField(json, "x", 0, start), -1024, 1024);
+    s.y = (int16_t)constrain(jsonIntField(json, "y", 0, start), -1024, 1024);
     s.font = (int8_t)constrain(jsonIntField(json, "font", 0, start), -1, 4);
     s.color = (uint8_t)constrain(jsonIntField(json, "color", 0, start), 0, 1);
     if (!s.value.length()) { pos = start + 8; continue; } // 无 value 的槽位跳过
@@ -1012,8 +1013,8 @@ static bool applyServerConfigJson(const String& body) {
     String fallback = jsonStringField(obj, "fallback");
     if (type == "text" && (value.length() || valueFrom.length())) {
       renderProgram[count].visible = jsonBoolField(obj, "visible", true);
-      renderProgram[count].x = (uint8_t)constrain(jsonIntField(obj, "x", 0), 0, 249);
-      renderProgram[count].y = (uint8_t)constrain(jsonIntField(obj, "y", 0), 0, 121);
+      renderProgram[count].x = (int16_t)constrain(jsonIntField(obj, "x", 0), -1024, 1024);
+      renderProgram[count].y = (int16_t)constrain(jsonIntField(obj, "y", 0), -1024, 1024);
       renderProgram[count].font = (int8_t)constrain(jsonIntField(obj, "font", 0), -1, 4);
       renderProgram[count].color = (uint8_t)constrain(jsonIntField(obj, "color", 0), 0, 1);
       renderProgram[count].wrap = jsonBoolField(obj, "wrap", false);
@@ -1320,7 +1321,8 @@ static bool persistFrameToStorage() {
   f.write(srvFrameBlack, FRAME_PLANE_BYTES);
   f.write(srvFrameRed, FRAME_PLANE_BYTES);
   f.close();
-  // 槽位持久化到 NVS
+  // 槽位持久化到 NVS（v2 坐标为 signed int16，支持移出左/上边缘自然裁切）
+  prefs.putUChar("coordV", 2);
   prefs.putInt("frameSlots", frameSlotCount);
   for (int i = 0; i < frameSlotCount; ++i) {
     String kx = String("fs") + i + "x";
@@ -1328,8 +1330,8 @@ static bool persistFrameToStorage() {
     String kf = String("fs") + i + "f";
     String kc = String("fs") + i + "c";
     String kv = String("fs") + i + "v";
-    prefs.putUChar(kx.c_str(), frameSlots[i].x);
-    prefs.putUChar(ky.c_str(), frameSlots[i].y);
+    prefs.putShort(kx.c_str(), frameSlots[i].x);
+    prefs.putShort(ky.c_str(), frameSlots[i].y);
     prefs.putChar(kf.c_str(), frameSlots[i].font);
     prefs.putUChar(kc.c_str(), frameSlots[i].color);
     prefs.putString(kv.c_str(), frameSlots[i].value.substring(0, 48));
@@ -1351,6 +1353,7 @@ static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& sl
 
 static void loadFrameSlots() {
   frameSlotCount = constrain(prefs.getInt("frameSlots", 0), 0, FRAME_SLOT_MAX);
+  const bool legacyUnsignedCoords = prefs.getUChar("coordV", 1) < 2;
   for (int i = 0; i < frameSlotCount; ++i) {
     FrameSlot& s = frameSlots[i];
     s.valid = true;
@@ -1359,8 +1362,9 @@ static void loadFrameSlots() {
     String kf = String("fs") + i + "f";
     String kc = String("fs") + i + "c";
     String kv = String("fs") + i + "v";
-    s.x = (uint8_t)constrain(prefs.getUChar(kx.c_str(), 0), 0, 249);
-    s.y = (uint8_t)constrain(prefs.getUChar(ky.c_str(), 0), 0, 121);
+    // Existing v1 frame slots were uint8; retain them after OTA/source upgrade.
+    s.x = legacyUnsignedCoords ? prefs.getUChar(kx.c_str(), 0) : (int16_t)constrain(prefs.getShort(kx.c_str(), 0), -1024, 1024);
+    s.y = legacyUnsignedCoords ? prefs.getUChar(ky.c_str(), 0) : (int16_t)constrain(prefs.getShort(ky.c_str(), 0), -1024, 1024);
     s.font = (int8_t)constrain(prefs.getChar(kf.c_str(), 0), -1, 4);
     s.color = (uint8_t)constrain(prefs.getUChar(kc.c_str(), 0), 0, 1);
     frameSlots[i].value = prefs.getString(kv.c_str(), "");
@@ -1372,7 +1376,7 @@ static void loadFrameSlots() {
 // 槽位坐标是逻辑 250×122（与 setRotation(1) 一致），物理落点按 rotation 1 映射：
 // (lx, ly) → (121 - ly, lx)。字体位图 1 = 黑墨 → 写入 black 平面 bit 0。
 static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
-                               uint16_t lx, uint16_t ly, uint8_t color, const GFXfont* font) {
+                               int16_t lx, int16_t ly, uint8_t color, const GFXfont* font) {
   int16_t cx = lx;
   for (uint16_t i = 0; i < text.length(); ++i) {
     const char c = text.charAt(i);
@@ -1450,7 +1454,7 @@ static void drawFrameWithSlots(const CardPrice& card) {
 static String jsonStringField(const String& json, const String& key, int from);
 static int jsonIntField(const String& json, const String& key, int def, int from);
 static String applyRenderPlaceholders(String value, const CardPrice& card);
-static String fitTextToSlot(String value, int8_t font, uint8_t x);
+static String fitTextToSlot(String value, int8_t font, int16_t x);
 static uint16_t layoutColor(uint8_t color);
 static const GFXfont* layoutFont(int8_t font);
 
