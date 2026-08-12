@@ -79,8 +79,11 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.6-slot-parser";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.7-slot-migrate-ntp";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
+// Bump whenever persisted frame-slot decoding semantics change. An old frame
+// must be re-fetched rather than replaying a bad NVS slot list after a 304.
+static constexpr uint8_t FRAME_SLOT_FORMAT_VERSION = 3;
 
 static constexpr int PIN_BAT_ADC = 34;
 static constexpr int EPD_BUSY = 25;
@@ -264,6 +267,12 @@ static void loadConfig() {
   deviceId = prefs.getString("devId", "");
   deviceKey = prefs.getString("devKey", "");
   serverConfigVersion = prefs.getInt("srvVer", 0);
+  if (prefs.getUChar("frameSlotFmt", 0) != FRAME_SLOT_FORMAT_VERSION) {
+    Serial.println("Frame slot format changed; requesting a clean server frame");
+    serverConfigVersion = 0;
+    prefs.putInt("srvVer", 0);
+    prefs.putInt("frameSlots", 0);
+  }
   // NVS 自愈：曾出现 srvVer 被毒化为 INT32_MAX，导致服务器永远返回 304。
   // 不再依赖整片擦除；异常版本号直接回到 0，下次 poll 获取全量配置。
   if (serverConfigVersion > 100000) {
@@ -662,6 +671,17 @@ static String currentDateLabel() {
   return String(buf);
 }
 
+// Deep-sleep wake may reach a refresh before SNTP has obtained its first time.
+// Wait once at boot so {time}/{date} do not become transient -- placeholders.
+static bool waitForNtpSync(uint32_t timeoutMs = 10000) {
+  struct tm t;
+  const uint32_t started = millis();
+  while (!getLocalTime(&t, 250) && millis() - started < timeoutMs) delay(100);
+  const bool synced = getLocalTime(&t, 50);
+  Serial.printf("NTP %s in %lums\n", synced ? "synced" : "not synced", (unsigned long)(millis() - started));
+  return synced;
+}
+
 static uint16_t layoutColor(uint8_t color) {
   return color == 1 ? GxEPD_RED : GxEPD_BLACK;
 }
@@ -958,7 +978,9 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
 static void parseFrameSlots(const String& json, int from) {
   frameSlotCount = 0;
   int key = json.indexOf("\"slots\"", from);
-  int arrStart = key < 0 ? -1 : json.indexOf('[', key);
+  // Cloud config passes the enclosing JSON object; LAN /api/frame passes the
+  // slots array itself. Support both without returning to cross-object scans.
+  int arrStart = key < 0 ? json.indexOf('[', from) : json.indexOf('[', key);
   int arrEnd = jsonClosingIndex(json, arrStart, '[', ']');
   if (arrStart < 0 || arrEnd < 0) {
     Serial.println("Frame slots parse failed: no slots array");
@@ -1326,6 +1348,7 @@ static bool persistFrameToStorage() {
   f.close();
   // 槽位持久化到 NVS（v2 坐标为 signed int16，支持移出左/上边缘自然裁切）
   prefs.putUChar("coordV", 2);
+  prefs.putUChar("frameSlotFmt", FRAME_SLOT_FORMAT_VERSION);
   prefs.putInt("frameSlots", frameSlotCount);
   for (int i = 0; i < frameSlotCount; ++i) {
     String kx = String("fs") + i + "x";
@@ -1761,7 +1784,7 @@ void setup() {
   if (!wifiOk) startConfigAP();
   if (WiFi.status() == WL_CONNECTED) {
     configTime(NTP_TZ_OFFSET_SEC, NTP_DST_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2);
-    Serial.println("NTP started");
+    waitForNtpSync();
   }
 
   setupRoutes();
