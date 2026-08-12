@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.7-slot-migrate-ntp";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.8-battery-probe";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 // Bump whenever persisted frame-slot decoding semantics change. An old frame
 // must be re-fetched rather than replaying a bad NVS slot list after a 304.
@@ -120,6 +120,9 @@ struct PowerState {
   uint32_t raw = 0;
   uint32_t adcMv = 0;
   bool batteryValid = false;
+  // ESP32 has no hardware USB-present signal wired in this product. A failed
+  // battery ADC sample is unknown, not proof that USB is the only power source.
+  bool batteryMeasurementAvailable = false;
 };
 
 static constexpr int RENDER_CMD_MAX = 20;
@@ -384,10 +387,26 @@ static PowerState readBatteryVoltage() {
   ps.raw = rawSum / 24;
   ps.adcMv = mvSum / 24;
   ps.voltage = ((float)ps.adcMv / 1000.0f) * DIVIDER_RATIO;
+  ps.batteryMeasurementAvailable = ps.adcMv >= 100;
   ps.batteryValid = ps.voltage >= MIN_VALID_BATTERY_V;
-  // USB/invalid readings are normal for this board and add no refresh value.
-  // Keep a usable battery reading as the only battery diagnostic.
-  if (ps.batteryValid) Serial.printf("Battery %.3fV\n", ps.voltage);
+  if (ps.batteryValid) {
+    Serial.printf("Battery %.3fV (GPIO%d raw=%lu adc=%lumV)\n", ps.voltage, PIN_BAT_ADC,
+                  (unsigned long)ps.raw, (unsigned long)ps.adcMv);
+  } else {
+    // One boot-only ADC1 scan identifies a wrong/unrouted VBAT_SENSE net without
+    // pretending that an ADC zero means USB. Inputs are read only; no pins change mode.
+    static constexpr int probePins[] = {32, 33, 34, 35, 36, 39};
+    Serial.printf("Battery ADC unavailable: GPIO%d raw=%lu adc=%lumV; ADC1 probe", PIN_BAT_ADC,
+                  (unsigned long)ps.raw, (unsigned long)ps.adcMv);
+    for (int pin : probePins) {
+      pinMode(pin, INPUT);
+      analogSetPinAttenuation(pin, ADC_11db);
+      uint32_t sum = 0;
+      for (int i = 0; i < 8; ++i) { sum += analogReadMilliVolts(pin); delay(1); }
+      Serial.printf(" GPIO%d=%lumV", pin, (unsigned long)(sum / 8));
+    }
+    Serial.println();
+  }
   return ps;
 }
 
@@ -618,7 +637,7 @@ static String displayTitle(const CardPrice& card) {
 
 static String powerLabel() {
   if (!showBattery) return "";
-  if (!powerState.batteryValid) return "USB";
+  if (!powerState.batteryValid) return "BAT?";
   String s = "B ";
   s += String(powerState.voltage, 2);
   s += "V";
@@ -698,7 +717,7 @@ static String renderFieldValue(const CardPrice& card, const String& key) {
   if (key == "mid") return card.midPrice;
   if (key == "high") return card.highPrice;
   if (key == "power") {
-    if (!powerState.batteryValid) return "USB";
+    if (!powerState.batteryValid) return "BAT?";
     return String("B ") + String(powerState.voltage, 2) + "V";
   }
   return "";
@@ -1506,7 +1525,7 @@ static String statusJson() {
   body += "\"apSsid\":\"" + jsonEscape(apSsid) + "\",";
   body += "\"apIp\":\"" + WiFi.softAPIP().toString() + "\"},";
   body += "\"power\":{";
-  body += "\"source\":\"" + String(powerState.batteryValid ? "battery" : "usb") + "\",";
+  body += "\"source\":\"" + String(powerState.batteryValid ? "battery" : "unknown") + "\",";
   body += "\"batteryValid\":" + String(powerState.batteryValid ? "true" : "false") + ",";
   body += "\"voltage\":" + String(powerState.voltage, 3) + ",";
   body += "\"raw\":" + String(powerState.raw) + "},";
