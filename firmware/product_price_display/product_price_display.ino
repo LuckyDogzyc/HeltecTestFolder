@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-font-diag";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.4-glyph-fix";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1375,22 +1375,28 @@ static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
                                uint16_t lx, uint16_t ly, uint8_t color, const GFXfont* font) {
   int16_t cx = lx;
   for (uint16_t i = 0; i < text.length(); ++i) {
-    char c = text.charAt(i);
+    const char c = text.charAt(i);
     if (c < font->first || c > font->last) { cx += 8; continue; }
     const GFXglyph* g = &font->glyph[c - font->first];
-    // 清除光标上方残留（Adafruit 行为）
-    if (g->yOffset > 0) cx += g->xOffset;
-    uint8_t* glyphBits = font->bitmap + g->bitmapOffset;
+
+    // GFXfont::bitmap 是“一个连续 bit 流”，每行末尾不会补齐到字节边界。
+    // 旧代码按 gy * ceil(width / 8) 寻址；对 19/21px 宽的 24pt glyph，
+    // 它会在每一行额外跳过 5/3 个有效 bit，后续扫描行全部错位，形成乱码。
+    // 这里严格复用 Adafruit_GFX::drawChar 的逐 bit 前进方式。
+    uint16_t bitmapOffset = g->bitmapOffset;
+    uint8_t bits = 0;
+    uint8_t bit = 0;
     for (uint8_t gy = 0; gy < g->height; ++gy) {
       for (uint8_t gx = 0; gx < g->width; ++gx) {
-        if (!(glyphBits[gy * ((g->width + 7) / 8) + (gx >> 3)] & (0x80 >> (gx & 7)))) continue;
-        // 逻辑坐标（Adafruit 基线语义：glyph 顶部在 cursor.y + yOffset）
-        int16_t lxx = cx + gx;
-        int16_t lyy = ly + g->yOffset + gy;
+        if (!(bit++ & 7)) bits = pgm_read_byte(&font->bitmap[bitmapOffset++]);
+        if (!(bits & 0x80)) continue;
+        // xOffset 对所有 glyph 都生效；此前仅在 yOffset > 0 时才错误地处理。
+        const int16_t lxx = cx + g->xOffset + gx;
+        const int16_t lyy = ly + g->yOffset + gy;
         if (lxx < 0 || lxx >= 250 || lyy < 0 || lyy >= 122) continue;
-        // rotation 1 映射到物理位图
-        int16_t px = 121 - lyy;
-        int16_t py = lxx;
+        // rotation 1：逻辑 (x,y) -> physical (121-y, x)
+        const int16_t px = 121 - lyy;
+        const int16_t py = lxx;
         uint8_t* plane = color == 1 ? red : black;
         plane[py * 16 + (px >> 3)] &= ~(0x80 >> (px & 7));
       }
