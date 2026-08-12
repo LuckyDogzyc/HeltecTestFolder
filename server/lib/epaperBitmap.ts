@@ -38,8 +38,9 @@ export type RenderedFrame = {
 
 export type SlotSpec = { value: string; x: number; y: number; font: number; color: number };
 
-// 动态槽位：位图模式中由固件本地实时绘制的字段（价格/时间/日期等）
-export const DYNAMIC_FIELDS = ['market', 'low', 'mid', 'high', 'time', 'date'];
+// 动态槽位：位图模式中由固件本地实时绘制的字段（价格/时间/日期/电池等）。
+// 电源状态绝不能烘进静态 frame，否则旧的 USB 像素会遮住唤醒后读取的电量。
+export const DYNAMIC_FIELDS = ['market', 'low', 'mid', 'high', 'time', 'date', 'power'];
 
 function isDynamic(item: RenderCommand): boolean {
   const v = item.value || '';

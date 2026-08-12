@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.9-gpio33-battery";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-1.0-battery-percent";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 // Bump whenever persisted frame-slot decoding semantics change. An old frame
 // must be re-fetched rather than replaying a bad NVS slot list after a 304.
@@ -97,6 +97,9 @@ static constexpr int EPD_SCLK = 13;
 static constexpr int EPD_CS   = 15;
 static constexpr float DIVIDER_RATIO = 1.0f;
 static constexpr float MIN_VALID_BATTERY_V = 2.50f;
+static constexpr uint32_t BATTERY_ADC_SATURATED_RAW = 4080;
+static constexpr float BATTERY_EMPTY_V = 3.20f;
+static constexpr float BATTERY_FULL_V = 4.20f;
 
 GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
   GxEPD2_213_Z98c(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
@@ -628,10 +631,10 @@ static String displayTitle(const CardPrice& card) {
 static String powerLabel() {
   if (!showBattery) return "";
   if (!powerState.batteryValid) return "BAT?";
-  String s = "B ";
-  s += String(powerState.voltage, 2);
-  s += "V";
-  return s;
+  if (powerState.raw >= BATTERY_ADC_SATURATED_RAW) return "100%";
+  const float ratio = (powerState.voltage - BATTERY_EMPTY_V) / (BATTERY_FULL_V - BATTERY_EMPTY_V);
+  const int percent = constrain((int)lroundf(ratio * 100.0f), 0, 100);
+  return String(percent) + "%";
 }
 
 static String priceDisplayValue(const String& raw);
@@ -708,7 +711,7 @@ static String renderFieldValue(const CardPrice& card, const String& key) {
   if (key == "high") return card.highPrice;
   if (key == "power") {
     if (!powerState.batteryValid) return "BAT?";
-    return String("B ") + String(powerState.voltage, 2) + "V";
+    return powerLabel();
   }
   return "";
 }

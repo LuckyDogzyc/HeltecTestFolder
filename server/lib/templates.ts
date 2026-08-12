@@ -11,7 +11,7 @@ export const sampleCard: CardSample = {
   low: '97.49',
   mid: '119.39',
   high: '525.15',
-  power: 'USB',
+  power: '100%',
 };
 
 export const templatePrograms: Record<string, RenderCommand[]> = {

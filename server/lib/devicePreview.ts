@@ -5,7 +5,7 @@ import { LOGICAL_H, LOGICAL_W, renderStaticFrame } from './epaperBitmap';
 
 const EPAPER_W = 122;
 const ROW_BYTES = 16;
-const DYNAMIC_FIELDS = ['market', 'low', 'mid', 'high', 'time', 'date'];
+const DYNAMIC_FIELDS = ['market', 'low', 'mid', 'high', 'time', 'date', 'power'];
 const RED = '#b00020';
 const BLACK = '#111111';
 
