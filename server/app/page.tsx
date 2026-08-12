@@ -7,7 +7,7 @@ import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; sourceId: string; market: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
 type DisplayInfo = { width: number; height: number; colors?: number; model?: string; rotation?: number };
-type LanDevice = { ip: string; name: string; deviceId: string; status: any; display?: DisplayInfo; presence?: 'online' | 'sleeping' | 'offline'; nextWakeAt?: string; cloudOnly?: boolean };
+type LanDevice = { ip: string; name: string; deviceId: string; status: any; display?: DisplayInfo; presence?: 'online' | 'sleeping' | 'offline'; nextWakeAt?: string; lastSeen?: string; cardKey?: string; cardName?: string; card?: CardSearchRow; templateId?: string; renderProgram?: RenderCommand[]; cloudOnly?: boolean };
 const PAGE_SIZE = 8;
 
 function cardVariantKey(card?: CardSearchRow) {
@@ -290,6 +290,21 @@ export default function Page() {
     setMessage(`已选择 ${card.n}，预览已更新`);
   }
 
+  // 选中设备：云端设备直接载入它当前保存的卡牌和排版，不用再手动搜索。
+  function selectDevice(d: LanDevice) {
+    setSelectedDeviceIp(d.ip);
+    if (d.card) {
+      setSelectedCard(d.card);
+      if (d.templateId && d.renderProgram?.length) {
+        setTemplateId(d.templateId);
+        setProgram(d.renderProgram.map((x) => ({ ...x })));
+      }
+      setMessage(`已载入设备当前卡：${d.card.n}（含已保存排版），可直接调整后更新`);
+    } else if (d.cardName) {
+      setMessage(`设备当前卡：${d.cardName}（无卡Key，请在卡牌搜索中选择后更新）`);
+    }
+  }
+
   async function probeIp(ip: string): Promise<LanDevice | null> {
     // 局域网场景（浏览器与设备同网段，或通过内网地址访问 WebUI）：
     // 两步探测——no-cors 静默探测端口（不刷 CORS 错误），端口通后 cors 确认。
@@ -302,7 +317,7 @@ export default function Page() {
       const status = await res.json();
       if (!status?.wifi && !status?.config) return null;
       const display = normalizeDisplayInfo(status);
-      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `pokemon-display-${ip.split('.').pop()}`, deviceId: status.server?.deviceId || '', status, display, presence: 'online' };
+      return { ip, name: status.server?.deviceId || status.wifi?.apSsid || `pokemon-display-${ip.split('.').pop()}`, deviceId: status.server?.deviceId || '', status, display, presence: 'online', cardName: status.card?.name || '' };
     } catch {
       // cors 确认失败：非 ESP32，或浏览器跨网段（公网 WebUI 场景 PNA 拦截）——静默忽略
       return null;
@@ -324,6 +339,12 @@ export default function Page() {
           display: normalizeDisplayInfo(d.lastStatus || {}),
           presence: d.presence || 'offline',
           nextWakeAt: d.nextWakeAt || undefined,
+          lastSeen: d.lastSeen || undefined,
+          cardKey: d.cardKey || '',
+          cardName: d.cardName || '',
+          card: d.card,
+          templateId: d.templateId,
+          renderProgram: d.renderProgram,
           cloudOnly: true,
         }));
       setLanDevices((prev) => {
@@ -453,14 +474,20 @@ export default function Page() {
                 const presence = d.presence || (d.cloudOnly ? 'offline' : 'online');
                 const badge = presence === 'online' ? '🟢 在线' : presence === 'sleeping' ? '💤 沉睡中' : '⚫ 离线';
                 const wake = presence === 'sleeping' && d.nextWakeAt ? ` · 预计唤醒 ${new Date(d.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '';
+                const lastSeen = d.lastSeen ? new Date(d.lastSeen) : null;
+                const hbAgeMin = lastSeen && Number.isFinite(lastSeen.getTime()) ? Math.max(0, Math.floor((Date.now() - lastSeen.getTime()) / 60000)) : null;
+                const hbText = lastSeen && hbAgeMin != null ? `最近心跳 ${lastSeen.toLocaleTimeString('zh-CN', { hour12: false })}（${hbAgeMin <= 0 ? '刚刚' : hbAgeMin < 60 ? `${hbAgeMin}分钟前` : `${Math.floor(hbAgeMin / 60)}小时${hbAgeMin % 60 ? `${hbAgeMin % 60}分` : ''}前`}）` : '';
+                const cardText = d.card?.n || d.cardName || (d.status?.card?.name ? `当前卡：${d.status.card.name}` : '');
                 return (
                   <button
                     key={d.ip}
-                    onClick={() => setSelectedDeviceIp(d.ip)}
+                    onClick={() => selectDevice(d)}
                     className={`deviceChoice ${selectedDeviceIp === d.ip ? 'active' : ''}`}
                   >
                     <b>{d.name} <span className={`presence ${presence}`}>{badge}</span></b>
                     <span>{d.ip} · {d.display ? `${d.display.width}×${d.display.height}${d.display.model ? ` · ${d.display.model}` : ''}` : '未返回屏幕信息，需升级固件'}{wake}{d.cloudOnly && presence !== 'online' ? ' · 异步同步' : ''}</span>
+                    {hbText && <span style={{ display: 'block', fontSize: 12, opacity: 0.8 }}>{hbText}</span>}
+                    {cardText && <span style={{ display: 'block', fontSize: 12, opacity: 0.8 }}>当前卡：{cardText}</span>}
                   </button>
                 );
               })}
@@ -519,7 +546,7 @@ export default function Page() {
           </div>
           <details className="card">
           <summary>高级：下发给设备的显示规则</summary>
-          <pre className="code">{JSON.stringify({ templateId, display: selectedDisplay, cardKey: selectedCard?.cardKey, productId: cardProductId(selectedCard?.cardKey), dataUrl: selectedCard?.cardKey ? `/api/prices/latest?cardKey=${selectedCard.cardKey}` : '', renderProgram: program }, null, 2)}</pre>
+          <pre className="code">{JSON.stringify({ templateId, display: selectedDisplay, cardKey: selectedCard?.cardKey, productId: cardProductId(selectedCard?.cardKey), dataUrl: selectedCard?.cardKey ? `http://${typeof window !== 'undefined' ? window.location.host : ''}/api/prices/latest?cardKey=${selectedCard.cardKey}` : '', renderProgram: program }, null, 2)}</pre>
           </details>
           <div className="message">{message || '流程：搜索设备 → 搜索并选择卡牌 → 选择模板/调整布局 → 更新设备显示。'}</div>
         </section>
