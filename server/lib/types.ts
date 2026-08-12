@@ -37,6 +37,8 @@ export type DeviceRecord = {
   lastSeen: string;
   configVersion: number;
   productId: number;
+  cardKey?: string;
+  dataUrl?: string;
   templateId: string;
   renderProgram: RenderCommand[];
   lastStatus?: Record<string, unknown>;

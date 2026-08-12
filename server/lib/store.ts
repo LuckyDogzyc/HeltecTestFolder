@@ -92,13 +92,15 @@ export function renameDevice(deviceId: string, displayName: string) {
   return device;
 }
 
-export function saveDeviceConfig(deviceId: string, productId: number, templateId: string, renderProgram: RenderCommand[]) {
+export function saveDeviceConfig(deviceId: string, productId: number, templateId: string, renderProgram: RenderCommand[], cardKey?: string, dataUrl?: string) {
   const store = readStore();
   const device = store.devices.find((d) => d.deviceId === deviceId);
   if (!device) return null;
   device.productId = productId;
   device.templateId = templateId;
   device.renderProgram = renderProgram;
+  if (cardKey) device.cardKey = cardKey;
+  if (dataUrl) device.dataUrl = dataUrl;
   device.configVersion += 1;
   writeStore(store);
   return device;

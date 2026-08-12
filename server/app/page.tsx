@@ -387,7 +387,7 @@ export default function Page() {
         const res = await fetch(`/api/devices/${encodeURIComponent(target.deviceId)}/config`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), templateId, renderProgram: program }),
+          body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), cardKey: selectedCard.cardKey, templateId, renderProgram: program }),
         });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);

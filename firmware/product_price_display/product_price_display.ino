@@ -950,6 +950,13 @@ static bool applyServerConfigJson(const String& body) {
   selectedProductId = newProductId;
   selectedCardKey = newCardKey;
   selectedSourceId = newSourceId;
+  // 服务器可能下发相对路径（/api/...）：拼上服务器 base 成绝对地址，设备直达服务器取数，
+  // 避免依赖 raw.githubusercontent.com（国内网络不可达时刷新必失败）。
+  if (newDataUrl.startsWith("/")) {
+    String base = serverBaseUrl;
+    while (base.endsWith("/")) base.remove(base.length() - 1);
+    newDataUrl = base + newDataUrl;
+  }
   selectedDataUrl = newDataUrl;
   selectedTemplate = 4;
   serverConfigVersion = newVersion;
