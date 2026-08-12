@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-frame-diag";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-slot-diag";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1105,6 +1105,14 @@ static bool serverRegisterOrHeartbeat() {
   payload += "\"productId\":" + String(selectedProductId) + ",";
   payload += "\"configVersion\":" + String(serverConfigVersion) + ",";
   payload += "\"sleepMin\":" + String(sleepMin) + ",";
+  // 渲染路径 + 槽位诊断（远程排查：帧是否生效、槽位数据是否正常）
+  payload += "\"frameReady\":\"" + String(serverFrameReady ? "server-frame" : (hasFrame ? "ffat-frame" : "none")) + "\",";
+  payload += "\"slots\":" + String(frameSlotCount) + ",";
+  if (frameSlotCount > 0) {
+    payload += "\"slot0\":{\"v\":\"" + jsonEscape(frameSlots[0].value) + "\",\"x\":" + String(frameSlots[0].x) +
+               ",\"y\":" + String(frameSlots[0].y) + ",\"f\":" + String(frameSlots[0].font) +
+               ",\"c\":" + String(frameSlots[0].color) + "},";
+  }
   // 屏幕信息：云端设备列表展示用（WebUI 从 lastStatus.display 读 250×122/型号/rotation）
   payload += "\"display\":{";
   payload += "\"model\":\"QYEG0213RYF661\",";
@@ -1377,6 +1385,7 @@ static void drawFrameFromPlanes(uint8_t* black, uint8_t* red, const CardPrice& c
     if (!s.valid || !s.value.length()) continue;
     String v = applyRenderPlaceholders(s.value, card);
     if (!v.length()) continue;
+    Serial.printf("Slot draw: '%s' at (%d,%d) font=%d color=%d\n", v.c_str(), s.x, s.y, s.font, s.color);
     renderTextToPlanes(black, red, v, s.x, s.y + fontAscent(s.font), s.color, layoutFont(s.font));
   }
   display.setFullWindow();
