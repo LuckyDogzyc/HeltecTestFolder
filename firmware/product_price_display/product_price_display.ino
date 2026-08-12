@@ -78,7 +78,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-fonts";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-server-frame";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -150,6 +150,11 @@ struct FrameSlot {
 FrameSlot frameSlots[FRAME_SLOT_MAX];
 int frameSlotCount = 0;
 bool hasFrame = false;
+// 服务器随配置下发的位图静态层（黑/红双平面 RAM 缓存）：每次唤醒随配置重新获取，
+// 无需文件系统；动态槽位（价格/时间/日期）由固件刷新时叠加绘制。
+static uint8_t srvFrameBlack[FRAME_PLANE_BYTES];
+static uint8_t srvFrameRed[FRAME_PLANE_BYTES];
+bool serverFrameReady = false;
 
 Preferences prefs;
 WebServer server(80);
@@ -743,6 +748,12 @@ static void drawRenderProgram(const CardPrice& card) {
     if (!value.length() && item.fallback.length() && lastDataJson.length()) value = firstJsonPathValue(lastDataJson, item.fallback);
     if (!value.length()) value = item.value;
     if (!value.length()) continue;
+    // 标题字段（card.localizedName / card.name）：与预览一致做全大写规范化（displayTitle），
+    // 否则 valueFrom 直取原始名（如 "Charizard"）会绕过 {title} 的大写转换，与预览不一致。
+    String resolvedField = item.valueFrom.length() ? item.valueFrom : item.fallback;
+    if (resolvedField.indexOf("localizedName") >= 0 || resolvedField.indexOf("card.name") >= 0) {
+      value = displayTitle(card);
+    }
     value = applyRenderPlaceholders(value, card);
     if (!value.length()) continue;
 
@@ -780,8 +791,8 @@ static void drawRenderProgram(const CardPrice& card) {
 static void waitEpaperSettle(uint32_t refreshStartMs) {
   uint32_t elapsed = millis() - refreshStartMs;
   if (elapsed < 3000) {
-    Serial.printf("Epaper busy not engaged (refresh took %lums); settling 16s for waveform\n", (unsigned long)elapsed);
-    delay(16000);
+    Serial.printf("Epaper busy not engaged (refresh took %lums); settling 25s for waveform\n", (unsigned long)elapsed);
+    delay(25000);
   } else {
     Serial.printf("Epaper refresh took %lums\n", (unsigned long)elapsed);
   }
@@ -793,8 +804,14 @@ static void drawScreen(const CardPrice& card) {
   display.init(115200, true, 10, false);  // reset_duration=10ms（面板规格要求 ≥10ms）
   display.setRotation(1);
   setStage("epd-refresh-start");
-  // 位图模式为默认渲染路径：静态层（Web canvas 任意字体）+ 动态槽位（价格/时间固件本地画）。
-  // 只要下发过一次位图，后续所有刷新（含深睡唤醒）都走位图。
+  // 渲染路径优先级：服务器位图（配置随帧下发，RAM 缓存）→ SPIFFS 位图 → 指令渲染。
+  // 位图静态层（Web canvas 任意字体/图片）+ 动态槽位（价格/时间/日期固件本地画）。
+  // 卡数据缺失时也照画静态层（动态槽位值为空自动跳过）。
+  if (serverFrameReady) {
+    drawFrameFromPlanes(srvFrameBlack, srvFrameRed, card);
+    setStage("epd-done");
+    return;
+  }
   if (hasFrame && card.found) {
     drawFrameWithSlots(card);
     setStage("epd-done");
@@ -948,6 +965,34 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
   return -1;
 }
 
+// 解析槽位 JSON（从 json 的 from 位置起）：[{"value":"${market}","x":124,"y":60,"font":0,"color":0},...]
+// 注意 value 字段在 x/y/font/color 之前（WebUI JSON.stringify 的对象键序）！
+// 必须从每个槽位对象的起点（第一个 "value" 或 "x"）解析，不能从 "x" 之后查 value。
+static void parseFrameSlots(const String& json, int from) {
+  frameSlotCount = 0;
+  int pos = from;
+  while (frameSlotCount < FRAME_SLOT_MAX) {
+    // 找到下一个槽位对象起点：最近的 "value" 或 "x" 键
+    int kv = json.indexOf("\"value\":", pos);
+    int kx = json.indexOf("\"x\":", pos);
+    int start = -1;
+    if (kv >= 0 && kx >= 0) start = kv < kx ? kv : kx;
+    else if (kv >= 0) start = kv;
+    else if (kx >= 0) start = kx;
+    else break;
+    FrameSlot& s = frameSlots[frameSlotCount];
+    s.valid = true;
+    s.value = jsonStringField(json, "value", start);
+    s.x = (uint8_t)constrain(jsonIntField(json, "x", 0, start), 0, 249);
+    s.y = (uint8_t)constrain(jsonIntField(json, "y", 0, start), 0, 121);
+    s.font = (uint8_t)constrain(jsonIntField(json, "font", 0, start), 0, 4);
+    s.color = (uint8_t)constrain(jsonIntField(json, "color", 0, start), 0, 1);
+    if (!s.value.length()) { pos = start + 8; continue; } // 无 value 的槽位跳过
+    ++frameSlotCount;
+    pos = start + 8; // 推进到下一个槽位
+  }
+}
+
 static bool applyServerConfigJson(const String& body) {
   int newVersion = jsonIntField(body, "configVersion", serverConfigVersion);
   if (newVersion < 1 || newVersion > 100000) {
@@ -1007,6 +1052,27 @@ static bool applyServerConfigJson(const String& body) {
   selectedTemplate = 4;
   serverConfigVersion = newVersion;
   serverTemplateId = newTemplateId.length() ? newTemplateId : "server";
+  // 位图静态层（服务器随配置下发的黑/红双平面 + 动态槽位）：
+  // 除价格/时间/日期外的元素由 Web canvas 渲染成位图（任意字体/以后可传图片），
+  // 固件刷新时只负责叠加动态槽位（renderTextToPlanes）。无 frame 字段时退回指令渲染。
+  serverFrameReady = false;
+  int fp = body.indexOf("\"frame\"");
+  if (fp >= 0) {
+    String blackB64 = jsonStringField(body, "blackB64", fp);
+    String redB64 = jsonStringField(body, "redB64", fp);
+    if (blackB64.length() && redB64.length()) {
+      int nb = base64Decode(blackB64, srvFrameBlack, FRAME_PLANE_BYTES);
+      int nr = base64Decode(redB64, srvFrameRed, FRAME_PLANE_BYTES);
+      if (nb == FRAME_PLANE_BYTES && nr == FRAME_PLANE_BYTES) {
+        int sp = body.indexOf("\"slots\"", fp);
+        parseFrameSlots(body, sp >= 0 ? sp : fp);
+        serverFrameReady = true;
+        Serial.printf("Server frame applied: planes=%d/%d slots=%d\n", nb, nr, frameSlotCount);
+      } else {
+        Serial.printf("Server frame decode failed nb=%d nr=%d\n", nb, nr);
+      }
+    }
+  }
   prefs.putLong("productId", selectedProductId);
   prefs.putString("cardKey", selectedCardKey);
   prefs.putString("srcId", selectedSourceId);
@@ -1215,31 +1281,7 @@ static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& sl
   f.write(black, FRAME_PLANE_BYTES);
   f.write(red, FRAME_PLANE_BYTES);
   f.close();
-  // 解析槽位 JSON: [{"value":"${market}","x":124,"y":60,"font":4,"color":0},...]
-  // 注意 value 字段在 x/y/font/color 之前（WebUI JSON.stringify 的对象键序）！
-  // 必须从每个槽位对象的起点（第一个 "value" 或 "x"）解析，不能从 "x" 之后查 value。
-  frameSlotCount = 0;
-  int pos = 0;
-  while (frameSlotCount < FRAME_SLOT_MAX) {
-    // 找到下一个槽位对象起点：最近的 "value" 或 "x" 键
-    int kv = slotsJson.indexOf("\"value\":", pos);
-    int kx = slotsJson.indexOf("\"x\":", pos);
-    int start = -1;
-    if (kv >= 0 && kx >= 0) start = kv < kx ? kv : kx;
-    else if (kv >= 0) start = kv;
-    else if (kx >= 0) start = kx;
-    else break;
-    FrameSlot& s = frameSlots[frameSlotCount];
-    s.valid = true;
-    s.value = jsonStringField(slotsJson, "value", start);
-    s.x = (uint8_t)constrain(jsonIntField(slotsJson, "x", 0, start), 0, 249);
-    s.y = (uint8_t)constrain(jsonIntField(slotsJson, "y", 0, start), 0, 121);
-    s.font = (uint8_t)constrain(jsonIntField(slotsJson, "font", 0, start), 0, 4);
-    s.color = (uint8_t)constrain(jsonIntField(slotsJson, "color", 0, start), 0, 1);
-    if (!s.value.length()) { pos = start + 8; continue; } // 无 value 的槽位跳过
-    ++frameSlotCount;
-    pos = start + 8; // 推进到下一个槽位
-  }
+  parseFrameSlots(slotsJson, 0); // 解析槽位（值在 x 之前，从对象起点解析）
   prefs.putInt("frameSlots", frameSlotCount);
   for (int i = 0; i < frameSlotCount; ++i) {
     String kx = String("fs") + i + "x";
@@ -1309,22 +1351,14 @@ static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
   }
 }
 
-static void drawFrameWithSlots(const CardPrice& card) {
-  if (!hasFrame) return;
-  File f = SPIFFS.open("/frame.bin", "r");
-  if (!f) return;
-  uint8_t* black = (uint8_t*)malloc(FRAME_PLANE_BYTES);
-  uint8_t* red = (uint8_t*)malloc(FRAME_PLANE_BYTES);
-  if (!black || !red) { free(black); free(red); f.close(); return; }
-  f.read(black, FRAME_PLANE_BYTES);
-  f.read(red, FRAME_PLANE_BYTES);
-  f.close();
-  // 整帧绘制：3 色屏必须用双平面 writeImage（writeNative 只写黑平面，会丢红色）。
-  // 注意 GxEPD2 的 writeImage 要求 x 8 字节对齐：WIDTH_VISIBLE=122 → wb=16 字节行，
-  // 位图按 128 宽布局（每行 16 字节，前 122 位有效），库内部处理字节对齐。
-  // 动态槽位（价格/时间）：直接渲染进位图数组（renderTextToPlanes），
-  // 不用 display.print——GxEPD2_3C 的 Adafruit 绘图走分页内存缓冲，与 writeImage
-  // 直写控制器是两套机制，混用会导致 print 的文字丢失。
+// 从内存平面绘制整帧：动态槽位（价格/时间/日期）叠加进位图 + 双平面 writeImage + 刷新。
+// 3 色屏必须用双平面 writeImage（writeNative 只写黑平面，会丢红色）。
+// 注意 GxEPD2 的 writeImage 要求 x 8 字节对齐：WIDTH_VISIBLE=122 → wb=16 字节行，
+// 位图按 128 宽布局（每行 16 字节，前 122 位有效），库内部处理字节对齐。
+// 动态槽位直接渲染进位图数组（renderTextToPlanes），不用 display.print——
+// GxEPD2_3C 的 Adafruit 绘图走分页内存缓冲，与 writeImage 直写控制器是两套机制，
+// 混用会导致 print 的文字丢失。
+static void drawFrameFromPlanes(uint8_t* black, uint8_t* red, const CardPrice& card) {
   for (int i = 0; i < frameSlotCount; ++i) {
     const FrameSlot& s = frameSlots[i];
     if (!s.valid || !s.value.length()) continue;
@@ -1339,6 +1373,19 @@ static void drawFrameWithSlots(const CardPrice& card) {
   display.refresh();
   waitEpaperSettle(epdStart);
   display.hibernate(); // 位图路径同样要断电休眠，省电
+}
+
+static void drawFrameWithSlots(const CardPrice& card) {
+  if (!hasFrame) return;
+  File f = SPIFFS.open("/frame.bin", "r");
+  if (!f) return;
+  uint8_t* black = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+  uint8_t* red = (uint8_t*)malloc(FRAME_PLANE_BYTES);
+  if (!black || !red) { free(black); free(red); f.close(); return; }
+  f.read(black, FRAME_PLANE_BYTES);
+  f.read(red, FRAME_PLANE_BYTES);
+  f.close();
+  drawFrameFromPlanes(black, red, card);
   free(black);
   free(red);
 }

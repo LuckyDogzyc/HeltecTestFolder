@@ -404,15 +404,24 @@ export default function Page() {
     // 固件拉取后走 renderProgram 指令路径渲染（方向已修正），位图直连下发仅限局域网设备。
     if (target?.cloudOnly) {
       try {
-        setMessage('设备在云端（可能睡眠/跨网段），正在保存到云端，唤醒后自动应用...');
+        setMessage('设备在云端（可能睡眠/跨网段），正在渲染静态层位图并保存到云端，唤醒后自动应用...');
+        // 位图静态层：浏览器 canvas 渲染（与局域网位图通道同一套代码，所见即所得），
+        // 服务器只存储转发；动态槽位（价格/时间/日期）固件唤醒时实时绘制。
+        const payload = framePayload(program, previewCard);
         const res = await fetch(`/api/devices/${encodeURIComponent(target.deviceId)}/config`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), cardKey: selectedCard.cardKey, templateId, renderProgram: program }),
+          body: JSON.stringify({
+            productId: cardProductId(selectedCard.cardKey),
+            cardKey: selectedCard.cardKey,
+            templateId,
+            renderProgram: program,
+            frame: { blackB64: payload.blackB64, redB64: payload.redB64, slots: payload.slots },
+          }),
         });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        setMessage(`已保存到云端：设备 ${target.deviceId} 唤醒后将自动应用（预计 ${target.nextWakeAt ? new Date(target.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '下次唤醒'}）。注意：云端通道走指令渲染（内置字体），如需位图（任意字体/大字号），请让设备与浏览器在同一局域网后直连下发。`);
+        setMessage(`已保存到云端：设备 ${target.deviceId} 唤醒后将应用静态层位图（${payload.slots.length} 个动态槽位由设备本地实时绘制）。预计 ${target.nextWakeAt ? new Date(target.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '下次唤醒'} 生效。`);
         return;
       } catch (e) {
         return setMessage(`云端保存失败：${e instanceof Error ? e.message : e}`);

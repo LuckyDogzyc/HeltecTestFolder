@@ -11,8 +11,10 @@ export async function GET(req: NextRequest) {
   const devices = listDevices(currentNetworkOnly ? ip : undefined).map((d) => {
     // 设备当前卡：用持久化的 cardKey 解析出卡名和完整卡数据（WebUI 选中设备时直接载入，不用再搜索）。
     const card = d.cardKey ? findCardByKey(d.cardKey) : null;
+    // 列表不下发位图帧（~11KB base64），避免设备列表响应膨胀；配置接口单独带。
+    const { frame: _frame, ...rest } = d;
     return {
-      ...d,
+      ...rest,
       presence: devicePresence(d),
       nextWakeAt: nextWakeAt(d),
       cardName: card?.n || (d.cardKey || ''),

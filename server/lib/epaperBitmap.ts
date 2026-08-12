@@ -68,9 +68,9 @@ export function renderStaticFrame(program: RenderCommand[], card: CardSample, fo
 
   for (const item of program) {
     if (!item.visible) continue;
-    // 跳过固件可画的动态槽位（font 0-2，固件内置 9pt/12pt 字体）；font 3/4 的动态
-    // 元素固件画不了（无大字体），由 Web canvas 渲染进位图（与动态Slots 的过滤一致）。
-    if (isDynamic(item) && (item.font ?? 0) <= 2) continue;
+    // 跳过所有动态槽位（价格/时间/日期——固件每次唤醒用内置字体重画，保证实时）。
+    // 固件已内置 9/12/18/24pt 四档字体，任何字号的动态元素都能本地绘制。
+    if (isDynamic(item)) continue;
     const text = renderValue(item.value, card);
     if (!text) continue;
     const px = FONT_PX[item.font] || 15;
@@ -111,12 +111,10 @@ export function renderStaticFrame(program: RenderCommand[], card: CardSample, fo
   };
 }
 
-// 动态槽位列表（固件本地绘制的元素）：返回 {value, x, y, font, color}
-// 固件只内置 9pt/12pt 字体（font 0-2）；font 3/4 的大字动态元素由 Web canvas
-// 渲染进位图（renderStaticFrame 不跳过它们），固件槽位仅处理 font 0-2。
+// 动态槽位列表（固件本地绘制的元素）：价格/时间/日期，不限字号（固件内置 9/12/18/24pt）
 export function dynamicSlots(program: RenderCommand[]) {
   return program
-    .filter((item) => item.visible && isDynamic(item) && (item.font ?? 0) <= 2)
+    .filter((item) => item.visible && isDynamic(item))
     .map((item) => ({
       value: item.value,
       x: item.x,

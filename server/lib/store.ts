@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import type { DeviceRecord, RenderCommand } from './types';
+import type { DeviceRecord, DeviceFrame, RenderCommand } from './types';
 import { templatePrograms } from './templates';
 
 const dataDir = join(process.cwd(), 'data');
@@ -92,7 +92,7 @@ export function renameDevice(deviceId: string, displayName: string) {
   return device;
 }
 
-export function saveDeviceConfig(deviceId: string, productId: number, templateId: string, renderProgram: RenderCommand[], cardKey?: string, dataUrl?: string) {
+export function saveDeviceConfig(deviceId: string, productId: number, templateId: string, renderProgram: RenderCommand[], cardKey?: string, dataUrl?: string, frame?: DeviceFrame) {
   const store = readStore();
   const device = store.devices.find((d) => d.deviceId === deviceId);
   if (!device) return null;
@@ -101,6 +101,7 @@ export function saveDeviceConfig(deviceId: string, productId: number, templateId
   device.renderProgram = renderProgram;
   if (cardKey) device.cardKey = cardKey;
   if (dataUrl) device.dataUrl = dataUrl;
+  if (frame && frame.blackB64 && frame.redB64) device.frame = frame;
   device.configVersion += 1;
   writeStore(store);
   return device;

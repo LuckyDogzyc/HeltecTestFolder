@@ -26,6 +26,10 @@ export type RenderCommand = {
   visible: boolean;
 };
 
+// 位图静态层（Web canvas 渲染的黑/红双平面 1bpp）+ 动态槽位（固件本地画的字段）
+export type FrameSlots = { value: string; x: number; y: number; font: number; color: number }[];
+export type DeviceFrame = { blackB64: string; redB64: string; slots: FrameSlots };
+
 export type DeviceRecord = {
   deviceId: string;
   factoryName: string;
@@ -41,5 +45,6 @@ export type DeviceRecord = {
   dataUrl?: string;
   templateId: string;
   renderProgram: RenderCommand[];
+  frame?: DeviceFrame;
   lastStatus?: Record<string, unknown>;
 };
