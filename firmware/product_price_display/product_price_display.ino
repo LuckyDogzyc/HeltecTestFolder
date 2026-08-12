@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-frame-persist";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-frame-diag";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1445,7 +1445,9 @@ static String statusJson() {
   body += "\"scannedLines\":" + String(currentCard.scannedLines) + ",";
   body += "\"lastError\":\"" + jsonEscape(lastError) + "\",";
   body += "\"httpError\":\"" + jsonEscape(lastHttpError) + "\",";
-  body += "\"stage\":\"" + jsonEscape(lastStage) + "\"},";
+  body += "\"stage\":\"" + jsonEscape(lastStage) + "\",";
+  // 渲染路径诊断：server-frame=配置帧(bitmap) / ffat-frame=恢复帧(bitmap) / none=指令渲染
+  body += "\"frameReady\":\"" + String(serverFrameReady ? "server-frame" : (hasFrame ? "ffat-frame" : "none")) + "\"},";
   body += "\"display\":{";
   body += "\"model\":\"QYEG0213RYF661\",";
   // 上报"旋转后的逻辑可视尺寸"：固件固定 setRotation(1)，渲染坐标系恒为 250×122（横屏）。
