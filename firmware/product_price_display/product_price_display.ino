@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-slot-diag";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-font-diag";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1086,6 +1086,28 @@ static bool httpBeginAny(HTTPClient& http, WiFiClient& client, WiFiClientSecure&
 
 static uint32_t crc32Bytes(const uint8_t* data, int len); // 前置声明（定义在 statusJson 前）
 
+// 开机自检：打印 24pt 字体的字形结构 + 位图字节，与源 .h 对比（诊断 renderTextToPlanes 乱码）
+static void dumpFontDiag() {
+  const GFXfont* f = &FreeMonoBold24pt7b;
+  const GFXglyph* g = &f->glyph['$' - f->first];
+  Serial.printf("FONT24 '$': off=%u w=%u h=%u adv=%u xo=%d yo=%d first=0x%02X last=0x%02X yAdv=%d\n",
+                (unsigned)g->bitmapOffset, g->width, g->height, g->xAdvance,
+                (int)g->xOffset, (int)g->yOffset, f->first, f->last, f->yAdvance);
+  const uint8_t* b = f->bitmap + g->bitmapOffset;
+  Serial.printf("FONT24 '$' bits: %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8]);
+  for (char ch : {'2', '8', '1'}) {
+    const GFXglyph* gx = &f->glyph[ch - f->first];
+    Serial.printf("FONT24 '%c': off=%u w=%u h=%u adv=%u xo=%d yo=%d\n",
+                  ch, (unsigned)gx->bitmapOffset, gx->width, gx->height, gx->xAdvance,
+                  (int)gx->xOffset, (int)gx->yOffset);
+  }
+  const GFXglyph* g9 = &FreeMonoBold9pt7b.glyph['$' - FreeMonoBold9pt7b.first];
+  Serial.printf("FONT9  '$': off=%u w=%u h=%u adv=%u xo=%d yo=%d\n",
+                (unsigned)g9->bitmapOffset, g9->width, g9->height, g9->xAdvance,
+                (int)g9->xOffset, (int)g9->yOffset);
+}
+
 static bool serverRegisterOrHeartbeat() {
   if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) return false;
   ensureDeviceIdentity();
@@ -1713,6 +1735,7 @@ void setup() {
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
   Serial.printf("Build: %s (%s) freeHeap=%lu\n", FIRMWARE_VERSION, BUILD_TAG, (unsigned long)ESP.getFreeHeap());
   loadConfig();
+  dumpFontDiag(); // 字体自检（诊断槽位乱码）
   ensureDeviceIdentity();
   Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s server=%s deviceId=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false", serverBaseUrl.c_str(), deviceId.c_str());
 
