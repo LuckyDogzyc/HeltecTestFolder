@@ -476,7 +476,8 @@ export default function Page() {
                 const wake = presence === 'sleeping' && d.nextWakeAt ? ` · 预计唤醒 ${new Date(d.nextWakeAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '';
                 const lastSeen = d.lastSeen ? new Date(d.lastSeen) : null;
                 const hbAgeMin = lastSeen && Number.isFinite(lastSeen.getTime()) ? Math.max(0, Math.floor((Date.now() - lastSeen.getTime()) / 60000)) : null;
-                const hbText = lastSeen && hbAgeMin != null ? `最近心跳 ${lastSeen.toLocaleTimeString('zh-CN', { hour12: false })}（${hbAgeMin <= 0 ? '刚刚' : hbAgeMin < 60 ? `${hbAgeMin}分钟前` : `${Math.floor(hbAgeMin / 60)}小时${hbAgeMin % 60 ? `${hbAgeMin % 60}分` : ''}前`}）` : '';
+                const hbDate = lastSeen ? `${lastSeen.getFullYear()}-${String(lastSeen.getMonth() + 1).padStart(2, '0')}-${String(lastSeen.getDate()).padStart(2, '0')}` : '';
+                const hbText = lastSeen && hbAgeMin != null ? `最近心跳 ${hbDate} ${lastSeen.toLocaleTimeString('zh-CN', { hour12: false })}（${hbAgeMin <= 0 ? '刚刚' : hbAgeMin < 60 ? `${hbAgeMin}分钟前` : `${Math.floor(hbAgeMin / 60)}小时${hbAgeMin % 60 ? `${hbAgeMin % 60}分` : ''}前`}）` : '';
                 const cardText = d.card?.n || d.cardName || (d.status?.card?.name ? `当前卡：${d.status.card.name}` : '');
                 return (
                   <button
