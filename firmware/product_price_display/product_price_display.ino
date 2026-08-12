@@ -78,7 +78,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-server-frame";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-fulltext";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -684,31 +684,19 @@ static String renderFieldValue(const CardPrice& card, const String& key) {
   return "";
 }
 
-static String compactDisplayText(String value) {
-  value.replace("Double Rare", "Dbl Rare");
-  value.replace("Ultra Rare", "Ultra");
-  value.replace("Illustration Rare", "Illus Rare");
-  value.replace("Special Illustration Rare", "SIR");
-  value.replace("Hyper Rare", "Hyper");
-  value.replace("Holofoil", "Holo");
-  value.replace("Reverse Holofoil", "Rev Holo");
-  value.replace(" / ", "/");
-  return value;
-}
-
 static uint8_t approxCharWidth(int8_t font) {
-  // 等宽字体 xAdvance：0/1=9pt 11px, 2=12pt 14px, 3=18pt 21px, 4=24pt 28px
+  // 等宽字体 xAdvance：-1 小字 8px, 0/1=9pt 11px, 2=12pt 14px, 3=18pt 21px, 4=24pt 28px
   if (font == 4) return 28;
   if (font == 3) return 21;
   if (font == 2) return 14;
+  if (font < 0) return 8;
   return 11;
 }
 
+// 仅换行模式使用：按字符宽度把当前剩余文本切成一行（不再缩写/截断内容本身，
+// 非换行渲染直接画完整文本，超出屏幕由面板自然裁剪）。
 static String fitTextToSlot(String value, int8_t font, uint8_t x) {
-  value = compactDisplayText(value);
   uint8_t cw = approxCharWidth(font);
-  // rotation 1 下逻辑横向范围是 250（物理 122 是短边）；之前用 WIDTH_VISIBLE=122 会把
-  // 文字按 122px 截断（如 24pt 标题只剩 3 个字符）。这里用逻辑宽度 250。
   int maxChars = (250 - x) / cw;
   if (maxChars < 4) maxChars = 4;
   if ((int)value.length() > maxChars) value = value.substring(0, maxChars);
@@ -774,8 +762,7 @@ static void drawRenderProgram(const CardPrice& card) {
         if (y > 122) break; // 屏幕高度保护（逻辑高 122）
       }
     } else {
-      value = fitTextToSlot(value, item.font, item.x);
-      if (!value.length()) continue;
+      // 非换行：画完整文本，超出屏幕由面板自然裁剪（已取消自动截断）
       display.setFont(layoutFont(item.font));
       display.setTextColor(layoutColor(item.color));
       display.setCursor(item.x, item.y + fontAscent(item.font));
@@ -1363,7 +1350,6 @@ static void drawFrameFromPlanes(uint8_t* black, uint8_t* red, const CardPrice& c
     const FrameSlot& s = frameSlots[i];
     if (!s.valid || !s.value.length()) continue;
     String v = applyRenderPlaceholders(s.value, card);
-    v = fitTextToSlot(v, s.font, s.x);
     if (!v.length()) continue;
     renderTextToPlanes(black, red, v, s.x, s.y + fontAscent(s.font), s.color, layoutFont(s.font));
   }

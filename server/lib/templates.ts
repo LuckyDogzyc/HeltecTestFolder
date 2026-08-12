@@ -91,31 +91,10 @@ export function normalizeTitle(name: string) {
   return t || 'CARD';
 }
 
-function compactDisplayText(value: string) {
-  return value
-    .replaceAll('Double Rare', 'Dbl Rare')
-    .replaceAll('Ultra Rare', 'Ultra')
-    .replaceAll('Illustration Rare', 'Illus Rare')
-    .replaceAll('Special Illustration Rare', 'SIR')
-    .replaceAll('Hyper Rare', 'Hyper')
-    .replaceAll('Reverse Holofoil', 'Rev Holo')
-    .replaceAll('Holofoil', 'Holo')
-    .replaceAll(' / ', '/');
-}
-
-function approxCharWidth(font: number) {
-  // 与固件 fitTextToSlot 的 xAdvance 一致：-1 小字 8px, 0/1=9pt 11px, 2=12pt 14px, 3=18pt 21px, 4=24pt 28px
-  if (font === 4) return 28;
-  if (font === 3) return 21;
-  if (font === 2) return 14;
-  if (font < 0) return 8;
-  return 11;
-}
-
+// 文本适配：取消自动截断/缩写——按原样渲染完整文本，超出屏幕宽度由画布/屏幕自然裁剪。
+// 编辑器、预览、位图静态层、设备渲染四层行为一致，所见即所得。
 export function fitTextToDeviceSlot(value: string, font: number, x: number, deviceWidth = 250) {
-  const compacted = compactDisplayText(value);
-  const maxChars = Math.max(4, Math.floor((deviceWidth - x) / approxCharWidth(font)));
-  return compacted.length > maxChars ? compacted.slice(0, maxChars) : compacted;
+  return value;
 }
 
 function displayPrice(value: string) {
