@@ -46,7 +46,7 @@ export const templatePrograms: Record<string, RenderCommand[]> = {
 export type ElementTypeId =
   | 'title' | 'name' | 'set' | 'rarity' | 'subType'
   | 'market' | 'low' | 'mid' | 'high'
-  | 'productId' | 'time' | 'power' | 'custom';
+  | 'productId' | 'time' | 'date' | 'power' | 'custom';
 
 export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[] = [
   { id: 'title', label: '卡牌名（标题）', value: '{title}' },
@@ -60,6 +60,7 @@ export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[
   { id: 'high', label: 'High 价格', value: '${high}' },
   { id: 'productId', label: 'Product ID', value: 'ID {productId}' },
   { id: 'time', label: '更新时间', value: '{time}' },
+  { id: 'date', label: '更新日期', value: '{date}' },
   { id: 'power', label: '电源状态', value: '{power}' },
   { id: 'custom', label: '自定义文本', value: '' },
 ];
@@ -125,6 +126,9 @@ export function renderValue(value: string, card: CardSample) {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
+  const yy = now.getFullYear();
+  const mo = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
   return value
     .replaceAll('{title}', card.title)
     .replaceAll('{name}', card.name)
@@ -140,5 +144,6 @@ export function renderValue(value: string, card: CardSample) {
     .replaceAll('{mid}', card.mid)
     .replaceAll('{high}', card.high)
     .replaceAll('{power}', card.power)
-    .replaceAll('{time}', `${hh}:${mm}`);
+    .replaceAll('{time}', `${hh}:${mm}`)
+    .replaceAll('{date}', `${yy}-${mo}-${dd}`);
 }

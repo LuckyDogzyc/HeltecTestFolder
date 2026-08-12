@@ -76,7 +76,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-epd-settle";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-epd-settle-date";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -633,6 +633,15 @@ static String currentTimeLabel() {
   return String(buf);
 }
 
+static String currentDateLabel() {
+  // 返回 "YYYY-MM-DD"（北京时间，更新日期）；NTP 未同步时返回 "--"
+  struct tm t;
+  if (!getLocalTime(&t, 1000)) return "--";
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%04d-%02d-%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+  return String(buf);
+}
+
 static uint16_t layoutColor(uint8_t color) {
   return color == 1 ? GxEPD_RED : GxEPD_BLACK;
 }
@@ -698,6 +707,7 @@ static String applyRenderPlaceholders(String value, const CardPrice& card) {
     value.replace(String("${") + k + "}", priceDisplayValue(v));
   }
   value.replace("{time}", currentTimeLabel());
+  value.replace("{date}", currentDateLabel());
   return value;
 }
 
