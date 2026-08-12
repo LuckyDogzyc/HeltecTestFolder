@@ -32,6 +32,8 @@
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
+#include <Fonts/FreeMonoBold18pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
 
 // NTP：用于 {time} 占位符（更新时间），无 NTP 时回退到编译时间/--。
 static const char* NTP_SERVER_1 = "pool.ntp.org";
@@ -76,7 +78,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-epd-settle-date";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-fonts";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -612,16 +614,29 @@ static String powerLabel() {
 static String priceDisplayValue(const String& raw);
 
 static const GFXfont* layoutFont(uint8_t font) {
-  // WebUI 下发的 renderProgram 统一使用 FreeMonoBold 字族，避免预览字体和设备字体宽度差异过大。
-  // 档位：0/1=9pt, 2=12pt；更大字号由 Web 端 canvas 位图通道提供（固件不再内置大字体）。
+  // WebUI 下发档位 0-4：0/1=9pt, 2=12pt, 3=18pt, 4=24pt（指令路径现在支持全部档位）
+  if (font == 4) return &FreeMonoBold24pt7b;
+  if (font == 3) return &FreeMonoBold18pt7b;
   if (font == 2) return &FreeMonoBold12pt7b;
   return &FreeMonoBold9pt7b;
 }
 
 static uint8_t layoutFontSize(uint8_t font) {
-  // 返回字体像素高度近似值，用于换行行高与预览对齐。
-  if (font == 2) return 15;
-  return 12; // 9pt
+  // 行高（yAdvance）：0/1=9pt 18px, 2=12pt 24px, 3=18pt 35px, 4=24pt 47px
+  if (font == 4) return 47;
+  if (font == 3) return 35;
+  if (font == 2) return 24;
+  return 18;
+}
+
+static uint8_t fontAscent(uint8_t font) {
+  // 预览/编辑器是"文字顶部对齐 item.y"（textBaseline:top），固件 setCursor 是基线语义；
+  // 绘制前把基线下移一个 ascent，让设备与预览对齐，避免大字号顶部被裁。
+  // 实测数字字形 yOffset：9pt=12, 12pt=16, 18pt=23, 24pt=32。
+  if (font == 4) return 32;
+  if (font == 3) return 23;
+  if (font == 2) return 16;
+  return 12;
 }
 
 static String currentTimeLabel() {
@@ -677,14 +692,19 @@ static String compactDisplayText(String value) {
 }
 
 static uint8_t approxCharWidth(uint8_t font) {
-  if (font == 2) return 14; // 12pt
-  return 11; // 9pt
+  // 等宽字体 xAdvance：0/1=9pt 11px, 2=12pt 14px, 3=18pt 21px, 4=24pt 28px
+  if (font == 4) return 28;
+  if (font == 3) return 21;
+  if (font == 2) return 14;
+  return 11;
 }
 
 static String fitTextToSlot(String value, uint8_t font, uint8_t x) {
   value = compactDisplayText(value);
   uint8_t cw = approxCharWidth(font);
-  int maxChars = (GxEPD2_213_Z98c::WIDTH_VISIBLE - x) / cw;
+  // rotation 1 下逻辑横向范围是 250（物理 122 是短边）；之前用 WIDTH_VISIBLE=122 会把
+  // 文字按 122px 截断（如 24pt 标题只剩 3 个字符）。这里用逻辑宽度 250。
+  int maxChars = (250 - x) / cw;
   if (maxChars < 4) maxChars = 4;
   if ((int)value.length() > maxChars) value = value.substring(0, maxChars);
   return value;
@@ -729,7 +749,7 @@ static void drawRenderProgram(const CardPrice& card) {
     if (item.wrap) {
       // 换行模式：按字符宽度切行，逐行绘制（x 固定，y 按行高递增）。
       uint8_t lineH = layoutFontSize(item.font);
-      uint8_t x = item.x, y = item.y;
+      uint8_t x = item.x, y = item.y + fontAscent(item.font);
       const GFXfont* f = layoutFont(item.font);
       display.setFont(f);
       display.setTextColor(layoutColor(item.color));
@@ -740,14 +760,14 @@ static void drawRenderProgram(const CardPrice& card) {
         display.print(line);
         value = value.substring(line.length());
         y += lineH;
-        if (y > 250) break; // 屏幕高度保护
+        if (y > 122) break; // 屏幕高度保护（逻辑高 122）
       }
     } else {
       value = fitTextToSlot(value, item.font, item.x);
       if (!value.length()) continue;
       display.setFont(layoutFont(item.font));
       display.setTextColor(layoutColor(item.color));
-      display.setCursor(item.x, item.y);
+      display.setCursor(item.x, item.y + fontAscent(item.font));
       display.print(value);
     }
   }
@@ -1311,7 +1331,7 @@ static void drawFrameWithSlots(const CardPrice& card) {
     String v = applyRenderPlaceholders(s.value, card);
     v = fitTextToSlot(v, s.font, s.x);
     if (!v.length()) continue;
-    renderTextToPlanes(black, red, v, s.x, s.y, s.color, layoutFont(s.font));
+    renderTextToPlanes(black, red, v, s.x, s.y + fontAscent(s.font), s.color, layoutFont(s.font));
   }
   display.setFullWindow();
   uint32_t epdStart = millis();

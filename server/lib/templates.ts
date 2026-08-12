@@ -104,9 +104,11 @@ function compactDisplayText(value: string) {
 }
 
 function approxCharWidth(font: number) {
+  // 与固件 fitTextToSlot 的 xAdvance 一致：0/1=9pt 11px, 2=12pt 14px, 3=18pt 21px, 4=24pt 28px
+  if (font === 4) return 28;
+  if (font === 3) return 21;
   if (font === 2) return 14;
-  if (font === 1) return 11;
-  return 8;
+  return 11;
 }
 
 export function fitTextToDeviceSlot(value: string, font: number, x: number, deviceWidth = 250) {
