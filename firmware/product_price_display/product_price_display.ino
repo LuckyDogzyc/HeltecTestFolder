@@ -1084,6 +1084,8 @@ static bool httpBeginAny(HTTPClient& http, WiFiClient& client, WiFiClientSecure&
   return http.begin(client, url);
 }
 
+static uint32_t crc32Bytes(const uint8_t* data, int len); // 前置声明（定义在 statusJson 前）
+
 static bool serverRegisterOrHeartbeat() {
   if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) return false;
   ensureDeviceIdentity();
@@ -1108,6 +1110,9 @@ static bool serverRegisterOrHeartbeat() {
   // 渲染路径 + 槽位诊断（远程排查：帧是否生效、槽位数据是否正常）
   payload += "\"frameReady\":\"" + String(serverFrameReady ? "server-frame" : (hasFrame ? "ffat-frame" : "none")) + "\",";
   payload += "\"slots\":" + String(frameSlotCount) + ",";
+  // 平面 CRC：与服务器配置帧对比，判断解码/存储是否损坏
+  payload += "\"crcB\":\"" + String(crc32Bytes(srvFrameBlack, FRAME_PLANE_BYTES), HEX) + "\",";
+  payload += "\"crcR\":\"" + String(crc32Bytes(srvFrameRed, FRAME_PLANE_BYTES), HEX) + "\",";
   if (frameSlotCount > 0) {
     payload += "\"slot0\":{\"v\":\"" + jsonEscape(frameSlots[0].value) + "\",\"x\":" + String(frameSlots[0].x) +
                ",\"y\":" + String(frameSlots[0].y) + ",\"f\":" + String(frameSlots[0].font) +
@@ -1419,6 +1424,16 @@ static String fitTextToSlot(String value, int8_t font, uint8_t x);
 static uint16_t layoutColor(uint8_t color);
 static const GFXfont* layoutFont(int8_t font);
 
+
+// CRC32（诊断用：对比设备 RAM 平面与服务器下发平面是否一致）
+static uint32_t crc32Bytes(const uint8_t* data, int len) {
+  uint32_t crc = 0xFFFFFFFF;
+  for (int i = 0; i < len; ++i) {
+    crc ^= data[i];
+    for (int b = 0; b < 8; ++b) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+  }
+  return ~crc;
+}
 
 static String statusJson() {
   String body = "{";
