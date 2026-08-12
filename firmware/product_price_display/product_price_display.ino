@@ -76,7 +76,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-stable-rollback";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-epd-settle";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -743,10 +743,24 @@ static void drawRenderProgram(const CardPrice& card) {
   }
 }
 
+// 三色墨水屏全刷波形需要 ~15s（GxEPD2_213_Z98c::full_refresh_time=15000ms）。
+// 本板 busy 引脚未正确生效时 GxEPD2 的 _waitWhileBusy 会瞬间返回（诊断行 _Update_Full : 5 微秒），
+// 若立即 hibernate/深睡断电，面板波形没跑完，屏幕会停在空白/半白状态。
+// 这里用墙钟兜底：刷新耗时 <3s 说明 busy 没在等，强制再等满波形时间才允许断电。
+static void waitEpaperSettle(uint32_t refreshStartMs) {
+  uint32_t elapsed = millis() - refreshStartMs;
+  if (elapsed < 3000) {
+    Serial.printf("Epaper busy not engaged (refresh took %lums); settling 16s for waveform\n", (unsigned long)elapsed);
+    delay(16000);
+  } else {
+    Serial.printf("Epaper refresh took %lums\n", (unsigned long)elapsed);
+  }
+}
+
 static void drawScreen(const CardPrice& card) {
   setStage("epd-init");
   SPI.begin(EPD_SCLK, -1, EPD_MOSI, EPD_CS);
-  display.init(115200, true, 2, false);
+  display.init(115200, true, 10, false);  // reset_duration=10ms（面板规格要求 ≥10ms）
   display.setRotation(1);
   setStage("epd-refresh-start");
   // 位图模式为默认渲染路径：静态层（Web canvas 任意字体）+ 动态槽位（价格/时间固件本地画）。
@@ -759,6 +773,7 @@ static void drawScreen(const CardPrice& card) {
   // 无位图时 fallback：云端指令路径（drawRenderProgram）或 NO DATA。
   display.setFullWindow();
   display.firstPage();
+  uint32_t epdStart = millis();
   do {
     display.fillScreen(GxEPD_WHITE);
     if (card.found && renderProgramCount > 0) {
@@ -773,6 +788,7 @@ static void drawScreen(const CardPrice& card) {
       if (p.length()) { display.print(" "); display.print(p); }
     }
   } while (display.nextPage());
+  waitEpaperSettle(epdStart);
   display.hibernate();
   setStage("epd-done");
 }
@@ -1288,8 +1304,10 @@ static void drawFrameWithSlots(const CardPrice& card) {
     renderTextToPlanes(black, red, v, s.x, s.y, s.color, layoutFont(s.font));
   }
   display.setFullWindow();
+  uint32_t epdStart = millis();
   display.writeImage(black, red, 0, 0, GxEPD2_213_Z98c::WIDTH_VISIBLE, GxEPD2_213_Z98c::HEIGHT, false, false, false);
   display.refresh();
+  waitEpaperSettle(epdStart);
   display.hibernate(); // 位图路径同样要断电休眠，省电
   free(black);
   free(red);
