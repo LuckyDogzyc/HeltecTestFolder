@@ -28,7 +28,8 @@
 #include <Preferences.h>
 #include <SPI.h>
 #include <FS.h>
-#include <SPIFFS.h>
+#include <FFat.h>   // app3M_fat9M 分区方案没有 spiffs 分区（SPIFFS 永远挂载失败）；
+                    // 位图帧持久化走 9MB fatfs 分区（FFat），唤醒 304 时也能恢复位图。
 #include <GxEPD2_3C.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
@@ -78,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-fulltext";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.3-frame-persist";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1054,6 +1055,7 @@ static bool applyServerConfigJson(const String& body) {
         int sp = body.indexOf("\"slots\"", fp);
         parseFrameSlots(body, sp >= 0 ? sp : fp);
         serverFrameReady = true;
+        persistFrameToStorage(); // 持久化到 fatfs：下次唤醒 304（配置未变）时从 RAM 恢复位图
         Serial.printf("Server frame applied: planes=%d/%d slots=%d\n", nb, nr, frameSlotCount);
       } else {
         Serial.printf("Server frame decode failed nb=%d nr=%d\n", nb, nr);
@@ -1255,20 +1257,35 @@ static void enterDeepSleep() {
 }
 
 static void initFrameStorage() {
-  if (!SPIFFS.begin(true)) Serial.println("SPIFFS mount failed");
-  hasFrame = SPIFFS.exists("/frame.bin");
-  Serial.printf("Frame storage: hasFrame=%d\n", hasFrame ? 1 : 0);
+  if (!FFat.begin(true)) { Serial.println("FFat mount failed"); return; }
+  hasFrame = FFat.exists("/frame.bin");
+  if (hasFrame) {
+    File f = FFat.open("/frame.bin", "r");
+    if (f) {
+      int nb = f.read(srvFrameBlack, FRAME_PLANE_BYTES);
+      int nr = f.read(srvFrameRed, FRAME_PLANE_BYTES);
+      f.close();
+      if (nb == FRAME_PLANE_BYTES && nr == FRAME_PLANE_BYTES) {
+        serverFrameReady = true;
+        Serial.printf("Frame storage: restored %d/%d bytes slots=%d\n", nb, nr, frameSlotCount);
+        return;
+      }
+    }
+  }
+  Serial.printf("Frame storage: hasFrame=%d (no frame yet)\n", hasFrame ? 1 : 0);
 }
 
-// 保存位图帧 + 槽位（槽位同时写 NVS 持久化）
-static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& slotsJson) {
-  if (!SPIFFS.begin(true)) { lastError = "SPIFFS mount failed"; return false; }
-  File f = SPIFFS.open("/frame.bin", "w");
+// 位图帧持久化：把 RAM 里的黑/红双平面写入 fatfs /frame.bin，槽位写 NVS。
+// 深睡唤醒后配置 304（未变化）时 initFrameStorage 会从 /frame.bin 恢复到 RAM，
+// 位图渲染不会丢失（之前 SPIFFS 挂载失败 → 帧从不持久化 → 每次唤醒回退指令渲染）。
+static bool persistFrameToStorage() {
+  if (!FFat.begin(true)) { lastError = "FFat mount failed"; return false; }
+  File f = FFat.open("/frame.bin", "w");
   if (!f) { lastError = "frame open failed"; return false; }
-  f.write(black, FRAME_PLANE_BYTES);
-  f.write(red, FRAME_PLANE_BYTES);
+  f.write(srvFrameBlack, FRAME_PLANE_BYTES);
+  f.write(srvFrameRed, FRAME_PLANE_BYTES);
   f.close();
-  parseFrameSlots(slotsJson, 0); // 解析槽位（值在 x 之前，从对象起点解析）
+  // 槽位持久化到 NVS
   prefs.putInt("frameSlots", frameSlotCount);
   for (int i = 0; i < frameSlotCount; ++i) {
     String kx = String("fs") + i + "x";
@@ -1286,6 +1303,15 @@ static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& sl
   lastError = "";
   Serial.printf("Frame saved: slots=%d\n", frameSlotCount);
   return true;
+}
+
+// 保存位图帧 + 槽位（局域网 /api/frame 通道：Web canvas 渲染的静态层）
+static bool saveFrame(const uint8_t* black, const uint8_t* red, const String& slotsJson) {
+  memcpy(srvFrameBlack, black, FRAME_PLANE_BYTES);
+  memcpy(srvFrameRed, red, FRAME_PLANE_BYTES);
+  serverFrameReady = true;
+  parseFrameSlots(slotsJson, 0); // 解析槽位（值在 x 之前，从对象起点解析）
+  return persistFrameToStorage();
 }
 
 static void loadFrameSlots() {
@@ -1363,7 +1389,7 @@ static void drawFrameFromPlanes(uint8_t* black, uint8_t* red, const CardPrice& c
 
 static void drawFrameWithSlots(const CardPrice& card) {
   if (!hasFrame) return;
-  File f = SPIFFS.open("/frame.bin", "r");
+  File f = FFat.open("/frame.bin", "r");
   if (!f) return;
   uint8_t* black = (uint8_t*)malloc(FRAME_PLANE_BYTES);
   uint8_t* red = (uint8_t*)malloc(FRAME_PLANE_BYTES);
@@ -1552,8 +1578,9 @@ static void setupRoutes() {
     // 指令模式与位图模式互斥：收到新 renderProgram 规则时清除旧位图，
     // 否则 drawScreen 会优先画残留的 /frame.bin（屏幕上显示旧内容）。
     if (ok && hasFrame) {
-      SPIFFS.remove("/frame.bin");
+      FFat.remove("/frame.bin");
       hasFrame = false;
+      serverFrameReady = false;
       prefs.remove("frameSlots");
       frameSlotCount = 0;
       Serial.println("Frame cleared: renderProgram mode");
