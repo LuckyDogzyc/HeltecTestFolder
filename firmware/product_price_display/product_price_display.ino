@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.4-glyph-fix";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.4-bitshift-fix";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -1389,7 +1389,9 @@ static void renderTextToPlanes(uint8_t* black, uint8_t* red, const String& text,
     for (uint8_t gy = 0; gy < g->height; ++gy) {
       for (uint8_t gx = 0; gx < g->width; ++gx) {
         if (!(bit++ & 7)) bits = pgm_read_byte(&font->bitmap[bitmapOffset++]);
-        if (!(bits & 0x80)) continue;
+        const bool ink = bits & 0x80;
+        bits <<= 1; // 每消费一个像素都左移：GFXfont 位图是 MSB-first 连续 bit 流。
+        if (!ink) continue;
         // xOffset 对所有 glyph 都生效；此前仅在 yOffset > 0 时才错误地处理。
         const int16_t lxx = cx + g->xOffset + gx;
         const int16_t lyy = ly + g->yOffset + gy;
