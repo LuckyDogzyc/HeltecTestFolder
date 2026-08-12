@@ -25,8 +25,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const body = await req.json();
   // dataUrl 用请求 Host 构造绝对地址（设备从公网/局域网都能直达服务器，不用碰 GitHub raw）。
   // 浏览器 WebUI 经 http://43.162.99.23:2300 访问时 host=43.162.99.23:2300，与设备心跳同源。
+  // ⚠️ 不能盲信 Host：本地/内网 Host（127.0.0.1、localhost、192.168.x 等，如服务器本机脚本/自动化
+  // 调 PATCH）会生成设备取不到数的 dataUrl——设备在用户家里只能访问公网 IP。一律回退公网地址。
+  const PUBLIC_HOST = '43.162.99.23:2300';
+  const rawHost = req.headers.get('host') || '';
+  const isPublicHost = rawHost && !rawHost.startsWith('127.') && !rawHost.startsWith('10.') &&
+    !rawHost.startsWith('192.168.') && !rawHost.startsWith('172.') && !rawHost.startsWith('0.0.0.0') &&
+    !rawHost.includes('localhost');
+  const host = isPublicHost ? rawHost : PUBLIC_HOST;
   const cardKey = String(body.cardKey || '');
-  const host = req.headers.get('host') || '43.162.99.23:2300';
   const dataUrl = cardKey
     ? `http://${host}/api/prices/latest?cardKey=${encodeURIComponent(cardKey)}`
     : String(body.dataUrl || '');
