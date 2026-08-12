@@ -20,7 +20,7 @@ export type RenderCommand = {
   fallback?: string;
   x: number;
   y: number;
-  font: 0 | 1 | 2 | 3 | 4;
+  font: -1 | 0 | 1 | 2 | 3 | 4;
   color: 0 | 1;
   wrap: boolean;
   visible: boolean;

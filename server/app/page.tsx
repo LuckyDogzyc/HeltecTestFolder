@@ -117,7 +117,7 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
     const originFont = program[index].font;
     function move(e: PointerEvent) {
       const dx = (e.clientX - startX) / scale;
-      const nextFont = Math.max(0, Math.min(4, Math.round(originFont + dx / 24))) as 0 | 1 | 2 | 3 | 4;
+      const nextFont = Math.max(-1, Math.min(4, Math.round(originFont + dx / 24))) as -1 | 0 | 1 | 2 | 3 | 4;
       applyChange(program.map((item, i) => i === index ? { ...item, font: nextFont } : item));
     }
     function up() {

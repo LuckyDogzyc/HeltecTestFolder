@@ -22,10 +22,10 @@ const ROW_BYTES = Math.ceil(EPAPER_W / 8); // 16
 // 统一字族：与 DOM 编辑预览 CSS 完全一致（Courier New → ui-monospace → Menlo → monospace），
 // 保证编辑预览与 canvas 真实渲染的文字宽度一致。
 export const FONT_FAMILY = '"Courier New", ui-monospace, Menlo, monospace';
-// 字号档位 → 像素高度（与 DOM 编辑预览 CSS 对齐：font0-4 = 15/15/21/30/40px）
-export const FONT_PX: Record<number, number> = { 0: 15, 1: 15, 2: 21, 3: 30, 4: 40 };
-// 字重（与 DOM CSS 对齐：font0/1 = 800, font2/3/4 = 900）
-export const FONT_WEIGHT: Record<number, number> = { 0: 800, 1: 800, 2: 900, 3: 900, 4: 900 };
+// 字号档位 → 像素高度（与 DOM 编辑预览 CSS 对齐：font-1=11px, font0-4 = 15/15/21/30/40px）
+export const FONT_PX: Record<number, number> = { [-1]: 11, 0: 15, 1: 15, 2: 21, 3: 30, 4: 40 };
+// 字重（与 DOM CSS 对齐：font-1 = 700, font0/1 = 800, font2/3/4 = 900）
+export const FONT_WEIGHT: Record<number, number> = { [-1]: 700, 0: 800, 1: 800, 2: 900, 3: 900, 4: 900 };
 
 export type RenderedFrame = {
   black: Uint8Array; // 4000 字节
