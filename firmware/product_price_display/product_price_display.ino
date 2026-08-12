@@ -79,7 +79,7 @@ static const char* SEARCH_INDEX_URL =
 // 已通过设备热点 /api/server 设置过 srvUrl 的仍以 NVS 值为准（优先）。
 static const char* DEFAULT_SERVER_BASE_URL = "http://43.162.99.23:2300";
 static constexpr uint32_t SERVER_HEARTBEAT_INTERVAL_MS = 30000;
-static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.5-unclamped-layout";
+static constexpr char FIRMWARE_VERSION[] = "product-price-display-0.6-slot-parser";
 static constexpr char BUILD_TAG[] = __DATE__ " " __TIME__;
 
 static constexpr int PIN_BAT_ADC = 34;
@@ -193,8 +193,6 @@ String lastDataJson;
 
 static void setStage(const String& stage) {
   lastStage = stage;
-  Serial.print("[STAGE] ");
-  Serial.println(stage);
 }
 
 static String jsonEscape(const String& s) {
@@ -378,9 +376,9 @@ static PowerState readBatteryVoltage() {
   ps.adcMv = mvSum / 24;
   ps.voltage = ((float)ps.adcMv / 1000.0f) * DIVIDER_RATIO;
   ps.batteryValid = ps.voltage >= MIN_VALID_BATTERY_V;
-  Serial.printf("BAT GPIO34 raw=%lu adc=%lumV vbat=%.3fV valid=%s\n",
-                (unsigned long)ps.raw, (unsigned long)ps.adcMv, ps.voltage,
-                ps.batteryValid ? "yes" : "no/usb");
+  // USB/invalid readings are normal for this board and add no refresh value.
+  // Keep a usable battery reading as the only battery diagnostic.
+  if (ps.batteryValid) Serial.printf("Battery %.3fV\n", ps.voltage);
   return ps;
 }
 
@@ -954,31 +952,36 @@ static int jsonClosingIndex(const String& json, int start, char openCh, char clo
   return -1;
 }
 
-// 解析槽位 JSON（从 json 的 from 位置起）：[{"value":"${market}","x":124,"y":60,"font":0,"color":0},...]
-// 注意 value 字段在 x/y/font/color 之前（WebUI JSON.stringify 的对象键序）！
-// 必须从每个槽位对象的起点（第一个 "value" 或 "x"）解析，不能从 "x" 之后查 value。
+// 解析 frame.slots 数组。必须先截出每一个完整对象再取字段：若在整个 JSON
+// 流里逐字段搜索，第二轮会取得“下一项的 value + 上一项的 x/y”，导致时间/日期
+// 被重复绘制到价格/时间坐标。
 static void parseFrameSlots(const String& json, int from) {
   frameSlotCount = 0;
-  int pos = from;
+  int key = json.indexOf("\"slots\"", from);
+  int arrStart = key < 0 ? -1 : json.indexOf('[', key);
+  int arrEnd = jsonClosingIndex(json, arrStart, '[', ']');
+  if (arrStart < 0 || arrEnd < 0) {
+    Serial.println("Frame slots parse failed: no slots array");
+    return;
+  }
+  int pos = arrStart + 1;
   while (frameSlotCount < FRAME_SLOT_MAX) {
-    // 找到下一个槽位对象起点：最近的 "value" 或 "x" 键
-    int kv = json.indexOf("\"value\":", pos);
-    int kx = json.indexOf("\"x\":", pos);
-    int start = -1;
-    if (kv >= 0 && kx >= 0) start = kv < kx ? kv : kx;
-    else if (kv >= 0) start = kv;
-    else if (kx >= 0) start = kx;
-    else break;
-    FrameSlot& s = frameSlots[frameSlotCount];
-    s.valid = true;
-    s.value = jsonStringField(json, "value", start);
-    s.x = (int16_t)constrain(jsonIntField(json, "x", 0, start), -1024, 1024);
-    s.y = (int16_t)constrain(jsonIntField(json, "y", 0, start), -1024, 1024);
-    s.font = (int8_t)constrain(jsonIntField(json, "font", 0, start), -1, 4);
-    s.color = (uint8_t)constrain(jsonIntField(json, "color", 0, start), 0, 1);
-    if (!s.value.length()) { pos = start + 8; continue; } // 无 value 的槽位跳过
-    ++frameSlotCount;
-    pos = start + 8; // 推进到下一个槽位
+    int objectStart = json.indexOf('{', pos);
+    if (objectStart < 0 || objectStart >= arrEnd) break;
+    int objectEnd = jsonClosingIndex(json, objectStart, '{', '}');
+    if (objectEnd < 0 || objectEnd > arrEnd) break;
+    String obj = json.substring(objectStart, objectEnd + 1);
+    String value = jsonStringField(obj, "value");
+    if (value.length()) {
+      FrameSlot& s = frameSlots[frameSlotCount++];
+      s.valid = true;
+      s.value = value;
+      s.x = (int16_t)constrain(jsonIntField(obj, "x", 0), -1024, 1024);
+      s.y = (int16_t)constrain(jsonIntField(obj, "y", 0), -1024, 1024);
+      s.font = (int8_t)constrain(jsonIntField(obj, "font", 0), -1, 4);
+      s.color = (uint8_t)constrain(jsonIntField(obj, "color", 0), 0, 1);
+    }
+    pos = objectEnd + 1;
   }
 }
 
@@ -1747,7 +1750,7 @@ void setup() {
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
   Serial.printf("Build: %s (%s) freeHeap=%lu\n", FIRMWARE_VERSION, BUILD_TAG, (unsigned long)ESP.getFreeHeap());
   loadConfig();
-  dumpFontDiag(); // 字体自检（诊断槽位乱码）
+
   ensureDeviceIdentity();
   Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s server=%s deviceId=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false", serverBaseUrl.c_str(), deviceId.c_str());
 

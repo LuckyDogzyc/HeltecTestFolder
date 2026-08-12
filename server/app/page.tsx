@@ -143,6 +143,11 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
           {program.filter((item) => item.visible).map((item, idx) => {
             const originalIndex = program.indexOf(item);
             const isSelected = editable && selected === originalIndex;
+            const label = fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x, deviceWidth);
+            // Hit area follows the actual firmware advance closely enough to select
+            // each visible element, while the image beneath remains the sole visual truth.
+            const advance = item.font === 4 ? 28 : item.font === 3 ? 21 : item.font === 2 ? 14 : 11;
+            const glyphHeight = item.font === 4 ? 38 : item.font === 3 ? 28 : item.font === 2 ? 20 : 15;
             return (
               <div
                 key={`${item.value}-${idx}`}
@@ -152,9 +157,11 @@ function EpaperPreview({ program, card, display, editable, onChange }: { program
                 style={{
                   left: item.x,
                   top: item.y,
+                  width: Math.max(12, label.length * advance),
+                  height: glyphHeight,
                 }}
               >
-                {editable && <span className="dragLabel">{fitTextToDeviceSlot(renderValue(item.value, card), item.font, item.x, deviceWidth)}</span>}
+                {editable && <span className="dragLabel">{label}</span>}
                 {isSelected && editable && (
                   <span
                     className="fontHandle"
