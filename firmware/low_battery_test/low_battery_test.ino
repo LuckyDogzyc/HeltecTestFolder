@@ -57,13 +57,18 @@ static uint32_t gLastSample = 0;
 static uint32_t gLastRefresh = 0;
 static uint32_t gLastWifiBurn = 0;
 
-// core 0 专职烧电：双核满载把电流拉到 ~200mA 级
+// core 0 专职烧电：双核满载把电流拉到 ~200mA 级。
+// 注意：不能无限忙循环不放手——core0 的 idle 任务会被饿死，触发 Task WDT 复位循环
+// （症状：屏幕反复闪、永远画不出字、每 ~5s 重启一次）。
+// 每烧 200ms 让出 10ms，idle 有机会喂狗；烧电效率 ~95%。
 static void burnCpuTask(void*) {
   for (;;) {
     volatile float x = 3.14159f;
-    for (int i = 0; i < 20000; ++i) {
+    uint32_t end = millis() + 200;
+    while (millis() < end) {
       x = x * 1.0000001f + 0.0000001f;
     }
+    vTaskDelay(1);   // 让位 10ms：core0 idle 运行并喂 WDT
   }
 }
 
