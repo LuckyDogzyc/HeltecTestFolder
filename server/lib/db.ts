@@ -5,7 +5,6 @@ import { join } from 'node:path';
 export type SqliteDatabase = Database.Database;
 
 const dataDir = join(process.cwd(), 'data');
-const databasePath = process.env.POKEMON_DISPLAY_DB_PATH || join(dataDir, 'pokemon-display.sqlite');
 let database: SqliteDatabase | undefined;
 
 export function initDatabase(db: SqliteDatabase) {
@@ -104,7 +103,7 @@ function migrateLegacyDevices(db: SqliteDatabase) {
 export function getDb() {
   if (!database) {
     mkdirSync(dataDir, { recursive: true });
-    database = new Database(databasePath);
+    database = new Database(process.env.POKEMON_DISPLAY_DB_PATH || join(dataDir, 'pokemon-display.sqlite'));
     initDatabase(database);
     migrateLegacyDevices(database);
   }
