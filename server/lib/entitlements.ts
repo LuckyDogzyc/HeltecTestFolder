@@ -1,4 +1,5 @@
 import { getDb, type SqliteDatabase } from './db';
+import { bumpOwnedDeviceVersions } from './store';
 
 export type Plan = 'free' | 'pro';
 export type Feature = 'advanced_config' | 'assets' | 'additional_devices';
@@ -15,9 +16,13 @@ export function requireFeature(plan: Plan, feature: Feature) {
 }
 
 export function grantPro(userId: string, db: SqliteDatabase = getDb(), expiresAt: string | null = null) {
-  db.prepare(`INSERT INTO entitlements (user_id, plan, expires_at, updated_at) VALUES (?, 'pro', ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET plan = 'pro', expires_at = excluded.expires_at, updated_at = excluded.updated_at`)
-    .run(userId, expiresAt, new Date().toISOString());
+  const grant = db.transaction(() => {
+    db.prepare(`INSERT INTO entitlements (user_id, plan, expires_at, updated_at) VALUES (?, 'pro', ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET plan = 'pro', expires_at = excluded.expires_at, updated_at = excluded.updated_at`)
+      .run(userId, expiresAt, new Date().toISOString());
+    bumpOwnedDeviceVersions(userId, db);
+  });
+  grant();
 }
 
 export function revokePro(userId: string, db: SqliteDatabase = getDb()) {
