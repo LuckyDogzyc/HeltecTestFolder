@@ -27,6 +27,11 @@ static constexpr uint16_t PANEL_HEIGHT = 250;
 static constexpr uint16_t BYTES_PER_ROW = PANEL_WIDTH / 4;
 static constexpr uint32_t FRAME_BYTES = uint32_t(PANEL_HEIGHT) * BYTES_PER_ROW;
 
+// The production board's BUSY line is known not to report the panel waveform.
+// Use conservative wall-clock waits for the first hardware test. Set true only
+// after measuring a correctly wired BUSY signal on this four-color panel.
+static constexpr bool BUSY_WIRE_VERIFIED = false;
+
 // Controller-native 2-bit pixel values, four pixels packed MSB first in each byte.
 enum PanelColor : uint8_t {
   BLACK = 0b00,
@@ -50,6 +55,17 @@ static void data(uint8_t value) {
 }
 
 static bool waitUntilReady(const char* stage, uint32_t timeoutMs) {
+  if (!BUSY_WIRE_VERIFIED) {
+    // The known three-color production board does not expose a useful BUSY
+    // signal. Do not block the refresh command waiting for a permanently LOW
+    // GPIO; the controller is instead allowed its documented full-refresh time.
+    const uint32_t fixedWaitMs = strstr(stage, "refresh") ? 30000 : 1000;
+    Serial.printf("BUSY bypass: %s; fixed delay %lu ms (GPIO%d=%d)\n",
+                  stage, static_cast<unsigned long>(fixedWaitMs), EPD_BUSY, digitalRead(EPD_BUSY));
+    delay(fixedWaitMs);
+    return true;
+  }
+
   const uint32_t started = millis();
   // Vendor code documents BUSY=0 and waits for BUSY=1.
   while (digitalRead(EPD_BUSY) == LOW) {
