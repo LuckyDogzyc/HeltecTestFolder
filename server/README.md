@@ -1,15 +1,42 @@
-# Pokémon Display Server WebUI MVP
+# Pokémon Display 云端管理后台
 
-公网服务器版管理后台原型，用于把复杂 UI 从 ESP32 固件中迁出。
+用于管理 ESP32 墨水屏卡牌价格显示设备的云端 WebUI。
 
-## 功能
+## 当前用户流程
 
-- 局域网直连：浏览器从公网服务器加载 WebUI，但保存配置时直接 POST 到 ESP32 局域网 IP。
-- 卡牌搜索：读取仓库 `cards/search_index.min.json`。
-- 模板预览：价格优先、收藏展示、行情详情、自定义布局。
-- 自定义布局：250×122 模拟墨水屏画布，字段可拖动，4px 网格吸附。
-- renderProgram 下发：生成 `productId + templateId + renderProgram`，由浏览器直连 ESP32 的 `/api/render-program`。
-- 服务器设备列表/注册 API 仅作为兼容和调试路径；新版 ESP32 默认不定时注册、不定时轮询。
+```text
+注册 / 登录
+→ 使用一次性配对码认领设备
+→ 搜索并选择卡牌
+→ 免费版选择基础模板；Pro 使用高级自定义布局
+→ 保存到云端
+→ 设备下次唤醒时自动下载新配置并刷新
+```
+
+设备不需要因为用户开通 Pro、修改卡牌或改变布局而重新刷机、OTA 或重新配网。
+
+## 版本权益
+
+| 功能 | 免费版 | Pro |
+|---|---|---|
+| 账号与设备认领 | 支持 | 支持 |
+| 基础卡牌价格模板 | 支持 | 支持 |
+| 云端保存与设备下次唤醒同步 | 支持 | 支持 |
+| 高级自定义布局 | 不支持 | 支持 |
+| 图片素材能力 | 预留 | 后续开放 |
+
+## 设备协议
+
+ESP32 使用 `deviceId + Authorization: Bearer <deviceKey>` 注册和拉取配置：
+
+```text
+POST /api/devices
+GET  /api/devices/{deviceId}/config?version=N
+```
+
+配置未变化时，服务端返回 HTTP `304`；配置或用户权益发生变化时递增 `configVersion`。用户成为 Pro 后，其名下设备会在下次正常唤醒时自动取得新的云端配置。
+
+浏览器从不持有设备密钥。设备详情、配置保存和设备列表均要求登录并校验归属。
 
 ## 运行
 
@@ -25,41 +52,18 @@ npm run dev
 http://localhost:2300
 ```
 
-生产构建验证：
+## 验证
 
 ```bash
+npm test
 npm run typecheck
 npm run build
 ```
 
-## 关键 API
+## 当前不在范围内
 
-```http
-GET  /api/devices?currentNetwork=1
-POST /api/devices
-PATCH /api/devices/{deviceId}
-GET  /api/devices/{deviceId}/config?version=1
-PATCH /api/devices/{deviceId}/config
-GET  /api/cards/search?q=greninja
-```
+- 真实支付接入；
+- 图片文件上传和素材管理；
+- 浏览器扫描局域网 IP、直连 ESP32 下发配置。
 
-设备注册示例：
-
-```bash
-curl -X POST http://localhost:2300/api/devices \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer demo-device-key' \
-  -d '{"deviceId":"esp32-5628","factoryName":"PokemonDisplay-5628","lanIp":"192.168.31.218","firmware":"0.1.0"}'
-```
-
-## 当前说明
-
-当前推荐网络路径：
-
-```text
-浏览器 -> http://43.162.99.23:2300 加载 WebUI/搜索/模板编辑
-浏览器 -> http://ESP32局域网IP/api/render-program 直连下发配置
-ESP32 -> GitHub raw bucket 仅在刷新价格时主动请求价格数据
-```
-
-服务器不再是 ESP32 的定时轮询目标，`data/devices.json` 只用于演示/调试服务器记录，后续接真实账号/多用户后再迁移到 SQLite。
+这些旧 LAN Bridge 路径已从用户 WebUI 移除；现在仅以云端配置和设备低频唤醒同步为准。

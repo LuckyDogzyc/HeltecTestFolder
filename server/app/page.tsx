@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, fitTextToDeviceSlot, makeCustomItem, normalizeTitle, renderValue, sampleCard, templatePrograms } from '@/lib/templates';
 import { renderDevicePreviewFrame } from '@/lib/devicePreview';
+import { framePayload } from '@/lib/epaperBitmap';
 import type { CardSample, RenderCommand } from '@/lib/types';
 
 type CardSearchRow = { cardKey: string; n: string; s?: string; r?: string; t?: string; m?: number; l?: number; h?: number; mid?: number; num?: string };
@@ -164,7 +165,8 @@ export default function Page() {
     if (templateId === 'advanced' && plan !== 'pro') return setMessage('自定义布局仅对 Pro 开放');
     setBusy(true);
     try {
-      const response = await fetch('/api/devices/' + encodeURIComponent(selectedDevice.deviceId) + '/config', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), cardKey: selectedCard.cardKey, templateId, renderProgram: program }) });
+      const payload = framePayload(program, previewCard);
+      const response = await fetch('/api/devices/' + encodeURIComponent(selectedDevice.deviceId) + '/config', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: cardProductId(selectedCard.cardKey), cardKey: selectedCard.cardKey, templateId, renderProgram: program, frame: { blackB64: payload.blackB64, redB64: payload.redB64, slots: payload.slots } }) });
       const data = await response.json(); if (!response.ok || !data.ok) throw new Error(data.error || '保存失败');
       await loadDevices(); setMessage('已保存到云端。设备将在下次唤醒并连接云端时自动应用此配置。');
     } catch (error) { setMessage(error instanceof Error ? error.message : '云端保存失败'); } finally { setBusy(false); }

@@ -28,16 +28,22 @@ test('advanced configuration is forbidden to free users, allowed to owners on Pr
   const forbidden = await saveConfig(new Request('http://localhost/api/devices/device-a/config', { method: 'PATCH', headers: { cookie: otherCookie, 'content-type': 'application/json' }, body: JSON.stringify({ productId: 123, templateId: 'price', renderProgram: [] }) }), context('device-a'));
   assert.equal(forbidden.status, 403);
 
-  grantPro(owner.id);
+  // A generated black/red base frame is how every plan reaches the existing
+  // ESP32 firmware; it is not itself a Pro feature.
+  const freeBasic = await saveConfig(new Request('http://localhost/api/devices/device-a/config', { method: 'PATCH', headers: { cookie: ownerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ productId: 123, templateId: 'price', renderProgram: [], frame: { blackB64: 'AA==', redB64: 'AA==', slots: [] } }) }), context('device-a'));
+  assert.equal(freeBasic.status, 200);
   assert.equal(getDevice('device-a')!.configVersion, originalVersion + 1);
+
+  grantPro(owner.id);
+  assert.equal(getDevice('device-a')!.configVersion, originalVersion + 2);
   const pro = await saveConfig(new Request('http://localhost/api/devices/device-a/config', { method: 'PATCH', headers: { cookie: ownerCookie, 'content-type': 'application/json' }, body: JSON.stringify(advanced) }), context('device-a'));
   assert.equal(pro.status, 200);
-  assert.equal(getDevice('device-a')!.configVersion, originalVersion + 2);
+  assert.equal(getDevice('device-a')!.configVersion, originalVersion + 3);
 
-  const deviceResponse = await getConfig(new Request(`http://localhost/api/devices/device-a/config?version=${originalVersion + 1}`, { headers: { authorization: 'Bearer device-secret' } }), context('device-a'));
+  const deviceResponse = await getConfig(new Request(`http://localhost/api/devices/device-a/config?version=${originalVersion + 2}`, { headers: { authorization: 'Bearer device-secret' } }), context('device-a'));
   assert.equal(deviceResponse.status, 200);
-  assert.equal((await deviceResponse.json()).configVersion, originalVersion + 2);
-  const unchanged = await getConfig(new Request(`http://localhost/api/devices/device-a/config?version=${originalVersion + 2}`, { headers: { authorization: 'Bearer device-secret' } }), context('device-a'));
+  assert.equal((await deviceResponse.json()).configVersion, originalVersion + 3);
+  const unchanged = await getConfig(new Request(`http://localhost/api/devices/device-a/config?version=${originalVersion + 3}`, { headers: { authorization: 'Bearer device-secret' } }), context('device-a'));
   assert.equal(unchanged.status, 304);
 
   closeDatabaseForTests();

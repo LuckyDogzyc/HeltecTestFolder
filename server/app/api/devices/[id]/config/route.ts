@@ -21,7 +21,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const user = sessionUserFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json();
-  const advanced = String(body.templateId || '') === 'advanced' || Boolean(body.assetId) || Boolean(body.frame);
+  // Static black/red frames are required by the current ESP32 for every plan.
+  // Only advanced layout selection or a future uploaded asset is Pro-only.
+  const advanced = String(body.templateId || '') === 'advanced' || Boolean(body.assetId);
   try {
     if (advanced) requireFeature(getPlan(user.id), 'advanced_config');
   } catch (error) {
