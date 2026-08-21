@@ -36,6 +36,19 @@
 #include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
+// Next PCB only: define USER_BTN_ENABLED=1 at build time after GPIO33 has an
+// independent, active-low button with a pull-up. Keep it off for the current
+// production PCB: no unverified GPIO is read or configured there.
+#ifndef USER_BTN_ENABLED
+#define USER_BTN_ENABLED 0
+#endif
+
+#if USER_BTN_ENABLED
+#include <driver/rtc_io.h>
+// This declaration must precede Arduino's auto-generated function prototypes.
+enum class UserButtonBootAction { None, StatusWake, ResetWifi };
+#endif
+
 // NTP：用于 {time} 占位符（更新时间），无 NTP 时回退到编译时间/--。
 static const char* NTP_SERVER_1 = "pool.ntp.org";
 static const char* NTP_SERVER_2 = "time.nist.gov";
@@ -95,6 +108,14 @@ static constexpr int EPD_DC   = 27;
 static constexpr int EPD_MOSI = 14;
 static constexpr int EPD_SCLK = 13;
 static constexpr int EPD_CS   = 15;
+#if USER_BTN_ENABLED
+static constexpr gpio_num_t PIN_USER_BTN = GPIO_NUM_33;
+static constexpr int USER_BTN_PRESSED_LEVEL = LOW;
+static constexpr uint32_t USER_BTN_HOLD_RESET_MS = 5000;
+// A short press is an intentional interactive wake. Keep the WebUI/status
+// reachable before returning to the normal sleep schedule.
+static constexpr uint32_t USER_BTN_STATUS_AWAKE_MS = 120000;
+#endif
 static constexpr float DIVIDER_RATIO = 1.0f;
 static constexpr float MIN_VALID_BATTERY_V = 2.50f;
 static constexpr uint32_t BATTERY_ADC_SATURATED_RAW = 4080;
@@ -179,6 +200,10 @@ uint32_t lastRefreshMs = 0;
 bool refreshInProgress = false;
 bool apRunning = false;
 String apSsid;
+#if USER_BTN_ENABLED
+bool userButtonStatusWake = false;
+uint32_t userButtonStatusAwakeUntilMs = 0;
+#endif
 
 long selectedProductId = DEFAULT_PRODUCT_ID;
 int selectedTemplate = 0; // 0 price focus, 1 collector, 2 market detail
@@ -375,6 +400,39 @@ static bool serverSyncConfigured() {
   return serverBaseUrl.startsWith("http://") || serverBaseUrl.startsWith("https://");
 }
 
+static void startConfigAP();
+
+#if USER_BTN_ENABLED
+// GPIO33 is an RTC-capable next-PCB-only input. A press wakes from deep sleep;
+// sampling the level after boot distinguishes a normal short wake from a
+// continuous five-second hold. EN/RST is never sampled or repurposed here.
+static UserButtonBootAction inspectUserButtonAtBoot() {
+  pinMode(PIN_USER_BTN, INPUT_PULLUP);
+  delay(30); // let the pull-up/button contact settle before timing a hold
+  if (digitalRead(PIN_USER_BTN) != USER_BTN_PRESSED_LEVEL) return UserButtonBootAction::None;
+
+  const uint32_t pressedAt = millis();
+  while (digitalRead(PIN_USER_BTN) == USER_BTN_PRESSED_LEVEL) {
+    if (millis() - pressedAt >= USER_BTN_HOLD_RESET_MS) {
+      Serial.println("USER_BTN held 5s: Wi-Fi-only reset requested");
+      return UserButtonBootAction::ResetWifi;
+    }
+    delay(20);
+  }
+  Serial.println("USER_BTN short press: status wake requested");
+  return UserButtonBootAction::StatusWake;
+}
+
+static void armUserButtonDeepSleepWake() {
+  // ext0 supports one RTC GPIO and a single wake level; next PCB uses a
+  // pulled-up switch to ground, so wake on LOW. Do not enable this on the
+  // current board until its independent GPIO32 button is physically verified.
+  rtc_gpio_pullup_en(PIN_USER_BTN);
+  rtc_gpio_pulldown_dis(PIN_USER_BTN);
+  esp_sleep_enable_ext0_wakeup(PIN_USER_BTN, USER_BTN_PRESSED_LEVEL);
+}
+#endif
+
 static PowerState readBatteryVoltage() {
   PowerState ps;
   pinMode(PIN_BAT_ADC, INPUT);
@@ -406,6 +464,7 @@ static PowerState readBatteryVoltage() {
 static bool connectWiFiWithFeedback(const String& ssid, const String& pass, uint32_t timeoutMs) {
   if (!ssid.length()) {
     lastError = "WiFi SSID empty";
+    startConfigAP(); // current board recovery: stay reachable for provisioning
     return false;
   }
   setStage("wifi-connect");
@@ -427,6 +486,9 @@ static bool connectWiFiWithFeedback(const String& ssid, const String& pass, uint
   }
   lastError = "WiFi connect failed";
   Serial.println(lastError);
+  // Failed credentials/coverage must always leave the current production board
+  // reachable; AP mode also prevents the normal deep-sleep path.
+  startConfigAP();
   return false;
 }
 
@@ -450,6 +512,17 @@ static void stopConfigAP() {
   apRunning = false;
   apSsid = "";
   Serial.println("Config AP stopped");
+}
+
+// Intentionally limited to Wi-Fi credentials. It must never affect deviceId,
+// deviceKey, cloud ownership, Pro entitlement, or the cached display frame.
+static void clearWifiSettingsForProvisioning() {
+  prefs.remove("ssid");
+  prefs.remove("pass");
+  savedSsid = "";
+  savedPass = "";
+  WiFi.disconnect(true, true);
+  startConfigAP();
 }
 
 static bool parseCsvLine(const String& line, String fields[], const int maxFields) {
@@ -1196,6 +1269,40 @@ static bool serverRegisterOrHeartbeat() {
   return code >= 200 && code < 300;
 }
 
+static bool requestPairingCode(String& codeOut) {
+  codeOut = "";
+  if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) {
+    lastServerError = "pairing requires cloud Wi-Fi";
+    return false;
+  }
+  ensureDeviceIdentity();
+  HTTPClient http;
+  WiFiClient client;
+  WiFiClientSecure secureClient;
+  const String url = serverUrl(String("/api/devices/") + deviceId + "/pairing-code");
+  if (!httpBeginAny(http, client, secureClient, url)) {
+    lastServerError = "pairing begin failed";
+    return false;
+  }
+  http.setTimeout(12000);
+  http.addHeader("Authorization", String("Bearer ") + deviceKey);
+  const int status = http.POST("");
+  lastServerHttpStatus = status;
+  const String body = status == HTTP_CODE_OK ? http.getString() : "";
+  http.end();
+  if (status != HTTP_CODE_OK) {
+    lastServerError = status == 409 ? "device already claimed" : String("pairing HTTP ") + status;
+    return false;
+  }
+  codeOut = jsonStringField(body, "code");
+  if (codeOut.length() != 6) {
+    lastServerError = "invalid pairing code response";
+    return false;
+  }
+  lastServerError = "";
+  return true;
+}
+
 static bool pollServerConfig() {
   if (!serverSyncConfigured() || WiFi.status() != WL_CONNECTED) return false;
   ensureDeviceIdentity();
@@ -1315,7 +1422,11 @@ static bool refreshCardAndScreen(bool drawEvenIfFail) {
 // 唤醒流程：RTC 定时唤醒 -> setup() 重跑 -> 连 WiFi -> 心跳 -> 取价刷屏 -> 再次深睡。
 // 复位键（EN）触发完整重启 = 回到通电状态，是"强制唤醒 + 重新配置"入口。
 static bool canDeepSleep() {
-  return sleepMin > 0 && !apRunning && WiFi.status() == WL_CONNECTED && !refreshInProgress;
+  if (sleepMin <= 0 || apRunning || WiFi.status() != WL_CONNECTED || refreshInProgress) return false;
+#if USER_BTN_ENABLED
+  if (userButtonStatusWake && (int32_t)(millis() - userButtonStatusAwakeUntilMs) < 0) return false;
+#endif
+  return true;
 }
 
 static void enterDeepSleep() {
@@ -1324,6 +1435,9 @@ static void enterDeepSleep() {
   // 先发心跳，让云端 lastSeen 保持新鲜（WebUI 显示"在线/沉睡"判断依据）
   serverRegisterOrHeartbeat();
   Serial.flush();
+#if USER_BTN_ENABLED
+  armUserButtonDeepSleepWake();
+#endif
   esp_sleep_enable_timer_wakeup((uint64_t)sleepMin * 60ULL * 1000000ULL);
   esp_deep_sleep_start();
   // 不返回
@@ -1575,8 +1689,8 @@ static String statusJson() {
 
 static const char SETUP_HTML[] PROGMEM = R"HTML(
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pokemon Display Setup</title><style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#171717}.wrap{max-width:640px;margin:auto;padding:16px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0001}h1{font-size:24px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ddd}input,select{flex:1;min-width:180px}button{background:#111;color:white;border:0}.secondary{background:#eee;color:#111}.muted{color:#666;font-size:14px}.ok{color:#087f23}.bad{color:#b00020}.step{font-weight:700}</style></head><body><div class="wrap"><h1>Pokémon Display Setup</h1><div class="card"><div class="step">第一步：连接家庭 Wi-Fi</div><p class="muted">当前页面只负责配网。设备热点 PokemonDisplay-XXXX 不提供互联网；配网成功后，请手机切回家庭 Wi-Fi，再打开设备地址进入完整管理后台。</p><div class="row"><select id="ssidSelect"><option value="">扫描后选择 Wi-Fi</option></select><button class="secondary" onclick="scanWifi()">扫描 Wi-Fi</button></div><div class="row"><input id="ssid" placeholder="手动输入 SSID / 隐藏网络"><input id="pass" type="password" placeholder="Wi-Fi 密码"></div><div class="row"><button onclick="saveWifi()">保存并连接</button></div><div id="result" class="muted"></div></div><div class="card"><div class="step">第二步：进入管理后台</div><div id="next" class="muted">连接成功后这里会显示设备局域网地址。</div></div></div><script>
-const $=id=>document.getElementById(id);async function api(p,opt){const r=await fetch(p,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}async function scanWifi(){const out=$('result');out.className='muted';out.textContent='扫描中...';try{const j=await api('/api/wifi/scan');const sel=$('ssidSelect');sel.innerHTML='<option value="">选择扫描到的 Wi-Fi</option>';(j.networks||[]).forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=`${n.ssid} (${n.rssi} dBm${n.secure?' 🔒':''})`;sel.appendChild(o);});out.textContent=`扫描完成：${(j.networks||[]).length} 个网络`; }catch(e){out.className='bad';out.textContent='扫描失败：'+e.message;}}$('ssidSelect').onchange=()=>{if($('ssidSelect').value)$('ssid').value=$('ssidSelect').value};async function saveWifi(){const ssid=$('ssid').value||$('ssidSelect').value, pass=$('pass').value;const out=$('result');out.className='muted';out.textContent='连接中，约 5-20 秒...';try{const j=await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`});out.className='ok';out.innerHTML=`连接成功：${j.ip} RSSI ${j.rssi}`;$('next').innerHTML=`请将手机切回家庭 Wi-Fi，然后打开：<br><b>http://${j.ip}</b>`;}catch(e){out.className='bad';out.textContent='连接失败：'+e.message;}}scanWifi();
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#171717}.wrap{max-width:640px;margin:auto;padding:16px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0001}h1{font-size:24px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ddd}input,select{flex:1;min-width:180px}button{background:#111;color:white;border:0}.secondary{background:#eee;color:#111}.muted{color:#666;font-size:14px}.ok{color:#087f23}.bad{color:#b00020}.step{font-weight:700}</style></head><body><div class="wrap"><h1>Pokémon Display Setup</h1><div class="card"><div class="step">第一步：连接家庭 Wi-Fi</div><p class="muted">当前页面只用于 Wi-Fi 配网，绝不会显示设备密钥（deviceKey）。设备热点 PokemonDisplay-XXXX 不提供互联网；配网成功后，请手机切回家庭 Wi-Fi，再打开设备地址进入完整管理后台。</p><div class="row"><select id="ssidSelect"><option value="">扫描后选择 Wi-Fi</option></select><button class="secondary" onclick="scanWifi()">扫描 Wi-Fi</button></div><div class="row"><input id="ssid" placeholder="手动输入 SSID / 隐藏网络"><input id="pass" type="password" placeholder="Wi-Fi 密码"></div><div class="row"><button onclick="saveWifi()">保存并连接</button></div><div id="result" class="muted"></div></div><div class="card"><div class="step">第二步：绑定云端账号</div><p class="muted">连接家庭 Wi-Fi 后点击生成一次性配对码，再在云端后台输入设备 ID 和此六码完成认领。配对码 10 分钟后失效。</p><div class="row"><button class="secondary" onclick="showPairingCode()">显示配对码</button></div><div id="pairing" class="muted"></div></div><div class="card"><div class="step">第三步：进入管理后台</div><div id="next" class="muted">连接成功后这里会显示设备局域网地址。</div></div></div><script>
+const $=id=>document.getElementById(id);async function api(p,opt){const r=await fetch(p,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||r.status);return j;}async function scanWifi(){const out=$('result');out.className='muted';out.textContent='扫描中...';try{const j=await api('/api/wifi/scan');const sel=$('ssidSelect');sel.innerHTML='<option value="">选择扫描到的 Wi-Fi</option>';(j.networks||[]).forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=`${n.ssid} (${n.rssi} dBm${n.secure?' 🔒':''})`;sel.appendChild(o);});out.textContent=`扫描完成：${(j.networks||[]).length} 个网络`; }catch(e){out.className='bad';out.textContent='扫描失败：'+e.message;}}$('ssidSelect').onchange=()=>{if($('ssidSelect').value)$('ssid').value=$('ssidSelect').value};async function saveWifi(){const ssid=$('ssid').value||$('ssidSelect').value, pass=$('pass').value;const out=$('result');out.className='muted';out.textContent='连接中，约 5-20 秒...';try{const j=await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`});out.className='ok';out.innerHTML=`连接成功：${j.ip} RSSI ${j.rssi}`;$('next').innerHTML=`请将手机切回家庭 Wi-Fi，然后打开：<br><b>http://${j.ip}</b>`;}catch(e){out.className='bad';out.textContent='连接失败：'+e.message;}}async function showPairingCode(){const out=$('pairing');out.className='muted';out.textContent='向云端申请配对码...';try{const j=await api('/api/pairing-code',{method:'POST'});out.className='ok';out.innerHTML='设备 ID：<b>'+j.deviceId+'</b><br>配对码：<b style="font-size:28px;letter-spacing:4px">'+j.code+'</b><br>请在 10 分钟内到云端后台完成认领。';}catch(e){out.className='bad';out.textContent='无法生成配对码：'+e.message;}}scanWifi();
 </script></body></html>
 )HTML";
 
@@ -1745,6 +1859,17 @@ static void setupRoutes() {
     String body = String("{\"heartbeat\":") + (heartbeat ? "true" : "false") + ",\"changed\":" + (changed ? "true" : "false") + ",\"status\":" + statusJson() + "}";
     sendJson(200, body);
   });
+  // Pairing codes are revealed only through the password-protected local AP;
+  // the browser asks the physical device, which authenticates to the cloud.
+  server.on("/api/pairing-code", HTTP_POST, []() {
+    if (!isApRequest()) { sendJson(403, "{\"error\":\"pairing is available only on the device setup AP\"}"); return; }
+    String code;
+    if (!requestPairingCode(code)) {
+      sendJson(lastServerHttpStatus == 409 ? 409 : 503, String("{\"error\":\"") + jsonEscape(lastServerError) + "\"}");
+      return;
+    }
+    sendJson(200, String("{\"ok\":true,\"deviceId\":\"") + jsonEscape(deviceId) + "\",\"code\":\"" + code + "\",\"expiresInSeconds\":600}");
+  });
   server.on("/api/refresh", HTTP_POST, []() {
     bool ok = refreshCardAndScreen(true);
     String body = String("{\"ok\":") + (ok ? "true" : "false") + ",\"error\":\"" + jsonEscape(lastError) + "\",\"status\":" + statusJson() + "}";
@@ -1764,12 +1889,7 @@ static void setupRoutes() {
     sendJson(ok ? 200 : 500, body);
   });
   server.on("/api/wifi/clear", HTTP_POST, []() {
-    prefs.remove("ssid");
-    prefs.remove("pass");
-    savedSsid = "";
-    savedPass = "";
-    WiFi.disconnect(true, true);
-    startConfigAP();
+    clearWifiSettingsForProvisioning();
     sendJson(200, "{\"ok\":true,\"message\":\"Wi-Fi settings cleared. Connect to AP and configure again.\"}");
   });
   server.onNotFound([]() {
@@ -1784,7 +1904,19 @@ void setup() {
   Serial.println();
   Serial.println("Product price display WebUI MVP: productId -> GitHub bucket -> e-paper");
   Serial.printf("Build: %s (%s) freeHeap=%lu\n", FIRMWARE_VERSION, BUILD_TAG, (unsigned long)ESP.getFreeHeap());
+#if USER_BTN_ENABLED
+  const UserButtonBootAction userButtonBootAction = inspectUserButtonAtBoot();
+#endif
   loadConfig();
+
+#if USER_BTN_ENABLED
+  if (userButtonBootAction == UserButtonBootAction::ResetWifi) {
+    clearWifiSettingsForProvisioning();
+  } else if (userButtonBootAction == UserButtonBootAction::StatusWake) {
+    userButtonStatusWake = true;
+    userButtonStatusAwakeUntilMs = millis() + USER_BTN_STATUS_AWAKE_MS;
+  }
+#endif
 
   ensureDeviceIdentity();
   Serial.printf("Config productId=%ld template=%d showBattery=%s savedSsid=%s alwaysSetupAP=%s server=%s deviceId=%s\n", selectedProductId, selectedTemplate, showBattery ? "true" : "false", savedSsid.c_str(), ALWAYS_START_SETUP_AP ? "true" : "false", serverBaseUrl.c_str(), deviceId.c_str());
@@ -1834,6 +1966,13 @@ void setup() {
 void loop() {
   if (apRunning) dnsServer.processNextRequest();
   server.handleClient();
+#if USER_BTN_ENABLED
+  if (userButtonStatusWake && (int32_t)(millis() - userButtonStatusAwakeUntilMs) >= 0) {
+    userButtonStatusWake = false;
+    Serial.println("USER_BTN status wake window ended; resuming sleep schedule");
+    enterDeepSleep();
+  }
+#endif
   // 常开模式定时心跳：保持云端 lastSeen 新鲜（WebUI 显示"在线"而非过期变 offline）。
   // 深睡设备唤醒时 setup() 已注册一次，此处间隔心跳对唤醒窗口无副作用。
   if (!apRunning && WiFi.status() == WL_CONNECTED && serverSyncConfigured() &&
