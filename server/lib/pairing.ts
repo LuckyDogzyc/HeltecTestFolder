@@ -38,3 +38,7 @@ export function claimDevice(userId: string, deviceId: string, code: string, db: 
 export function ownsDevice(userId: string, deviceId: string, db: SqliteDatabase = getDb()) {
   return Boolean(db.prepare('SELECT 1 FROM device_owners WHERE device_id = ? AND user_id = ?').get(deviceId, userId));
 }
+
+export function isClaimed(deviceId: string, db: SqliteDatabase = getDb()) {
+  return Boolean(db.prepare('SELECT 1 FROM device_owners WHERE device_id = ?').get(deviceId));
+}
