@@ -46,7 +46,12 @@ export const templatePrograms: Record<string, RenderCommand[]> = {
 export type ElementTypeId =
   | 'title' | 'name' | 'set' | 'rarity' | 'subType'
   | 'market' | 'low' | 'mid' | 'high'
-  | 'productId' | 'time' | 'date' | 'power' | 'custom';
+  | 'productId' | 'time' | 'date' | 'power' | 'grade' | 'custom';
+
+export const GRADE_COMPANIES = ['PSA', 'BGS', 'CGC'] as const;
+export const GRADE_SCORES = [10, 9, 8, 7] as const;
+export type GradeCompany = (typeof GRADE_COMPANIES)[number];
+export type GradeScore = (typeof GRADE_SCORES)[number];
 
 export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[] = [
   { id: 'title', label: '卡牌名（标题）', value: '{title}' },
@@ -58,6 +63,7 @@ export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[
   { id: 'low', label: 'Low 价格', value: '${low}' },
   { id: 'mid', label: 'Mid 价格', value: '${mid}' },
   { id: 'high', label: 'High 价格', value: '${high}' },
+  { id: 'grade', label: '评级卡价格', value: '{grade:PSA:10}' },
   { id: 'productId', label: 'Product ID', value: 'ID {productId}' },
   { id: 'time', label: '更新时间', value: '{time}' },
   { id: 'date', label: '更新日期', value: '{date}' },
@@ -67,8 +73,24 @@ export const ELEMENT_TYPES: { id: ElementTypeId; label: string; value: string }[
 
 export const MAX_CUSTOM_ITEMS = 20;
 
+const GRADE_VALUE_RE = /^\{grade:([A-Z]+):(\d+)\}$/;
+
+export function parseGradeValue(value: string): { company: GradeCompany; score: GradeScore } | null {
+  const m = GRADE_VALUE_RE.exec((value || '').trim());
+  if (!m) return null;
+  const company = m[1] as GradeCompany;
+  const score = Number(m[2]) as GradeScore;
+  if (!GRADE_COMPANIES.includes(company) || !GRADE_SCORES.includes(score)) return null;
+  return { company, score };
+}
+
+export function gradeValue(company: GradeCompany, score: GradeScore) {
+  return `{grade:${company}:${score}}`;
+}
+
 // 从 value 反推元素类型 id（用于下拉回显）
 export function elementTypeOf(value: string): ElementTypeId {
+  if (parseGradeValue(value)) return 'grade';
   const hit = ELEMENT_TYPES.find((t) => t.id !== 'custom' && t.value === value);
   return hit ? hit.id : 'custom';
 }
@@ -127,5 +149,10 @@ export function renderValue(value: string, card: CardSample) {
     .replaceAll('{high}', card.high)
     .replaceAll('{power}', card.power)
     .replaceAll('{time}', `${hh}:${mm}`)
-    .replaceAll('{date}', `${yy}-${mo}-${dd}`);
+    .replaceAll('{date}', `${yy}-${mo}-${dd}`)
+    .replace(/\{grade:([A-Z]+):(\d+)\}/g, (_m, company: string, score: string) => {
+      const price = card.grades?.[`${company}:${score}`];
+      const text = typeof price === 'number' && Number.isFinite(price) ? price.toFixed(2) : '--';
+      return `${company}${score} $${text}`;
+    });
 }

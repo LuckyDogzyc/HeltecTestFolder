@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ELEMENT_TYPES, MAX_CUSTOM_ITEMS, elementTypeOf, fitTextToDeviceSlot, makeCustomItem, normalizeTitle, renderValue, sampleCard, templatePrograms } from '@/lib/templates';
+import { ELEMENT_TYPES, GRADE_COMPANIES, GRADE_SCORES, MAX_CUSTOM_ITEMS, elementTypeOf, fitTextToDeviceSlot, gradeValue, makeCustomItem, normalizeTitle, parseGradeValue, renderValue, sampleCard, templatePrograms } from '@/lib/templates';
 import { renderDevicePreviewFrame } from '@/lib/devicePreview';
 import { framePayload } from '@/lib/epaperBitmap';
 import type { BackgroundColor, CardSample, RenderCommand } from '@/lib/types';
@@ -197,7 +197,7 @@ function ProgramEditor({ program, card, display, onChange, backgroundColor, onBa
         {program.map((item, index) => {
           const typeId = elementTypeOf(item.value);
           return (
-            <div className="fieldPanel" key={index}>
+            <div className={'fieldPanel' + (typeId === 'grade' ? ' gradeField' : '')} key={index}>
               <label className="visCheck" title="显示元素"><input type="checkbox" checked={item.visible} onChange={(e) => update(index, { visible: e.target.checked })} /></label>
               <select
                 aria-label="元素类型"
@@ -210,6 +210,17 @@ function ProgramEditor({ program, card, display, onChange, backgroundColor, onBa
               >
                 {ELEMENT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
+              {typeId === 'grade' && (() => {
+                const g = parseGradeValue(item.value) || { company: 'PSA', score: 10 } as { company: 'PSA' | 'BGS' | 'CGC'; score: 10 | 9 | 8 | 7 };
+                return (<>
+                  <select aria-label="评级公司" value={g.company} onChange={(e) => update(index, { value: gradeValue(e.target.value as typeof g.company, g.score) })}>
+                    {GRADE_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select aria-label="评级分数" value={g.score} onChange={(e) => update(index, { value: gradeValue(g.company, Number(e.target.value) as typeof g.score) })}>
+                    {GRADE_SCORES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </>);
+              })()}
               {typeId === 'custom' && (
                 <input aria-label="自定义文本" value={item.value} placeholder="输入文本，支持 {title} 等占位符" onChange={(e) => update(index, { value: e.target.value })} />
               )}
@@ -242,11 +253,15 @@ export default function Page() {
   const [cardMarket, setCardMarket] = useState('pokemon-us');
   const [cards, setCards] = useState<CardSearchRow[]>([]);
   const [selectedCard, setSelectedCard] = useState<CardSearchRow | undefined>();
+  const [graded, setGraded] = useState<Record<string, number> | null>(null);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const selectedDevice = devices.find((device) => device.deviceId === selectedDeviceId);
-  const previewCard = useMemo(() => toPreviewCard(selectedCard), [selectedCard]);
+  const previewCard = useMemo(() => {
+    const base = toPreviewCard(selectedCard);
+    return graded ? { ...base, grades: graded } : base;
+  }, [selectedCard, graded]);
   const pagedCards = cards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const pageCount = Math.max(1, Math.ceil(cards.length / PAGE_SIZE));
 
@@ -311,6 +326,13 @@ export default function Page() {
       setCards(next); setPage(nextPage); setMessage(next.length ? '请选择一张卡牌。' : '没有找到相关卡牌。');
     } catch { setMessage('卡牌搜索失败，请稍后重试'); }
   }
+  async function fetchGraded(cardKey: string) {
+    try {
+      const response = await fetch('/api/prices/graded?cardKey=' + encodeURIComponent(cardKey), { cache: 'no-store' });
+      const data = await response.json();
+      if (data && data.grades) setGraded(data.grades);
+    } catch { /* 评级价拿不到就显示 --，不阻塞主流程 */ }
+  }
   async function loadSelectedDeviceCard(device: OwnedDevice) {
     if (!device.cardKey) { setSelectedCard(undefined); return; }
     try {
@@ -321,6 +343,8 @@ export default function Page() {
       const price = data.price || {};
       setCardMarket(data.source?.market === 'pokemon-jp' ? 'pokemon-jp' : 'pokemon-us');
       setSelectedCard({ cardKey: card.cardKey || device.cardKey, n: card.localizedName || card.name || device.cardKey, s: card.setName || '', r: card.rarity || '', t: card.variant || '', m: typeof price.amount === 'number' ? price.amount : undefined, l: typeof price.low === 'number' ? price.low : undefined, num: card.number || '' });
+      setGraded(null);
+      void fetchGraded(device.cardKey);
     } catch (error) { setMessage(error instanceof Error ? error.message : '无法载入设备当前卡牌'); }
   }
   function selectDevice(device: OwnedDevice) {
@@ -361,5 +385,5 @@ export default function Page() {
   if (!authChecked) return <main className="authShell"><div className="authCard">正在连接云端…</div></main>;
   if (!account) return <main className="authShell"><section className="authIntro"><span className="wordmark">CARD INK</span><h1>卡牌墨水屏</h1><p>选择卡牌，调整布局，保存到你的设备。</p></section><form className="authCard authForm" onSubmit={submitAuth}><h2>{authMode === 'login' ? '登录' : '创建账号'}</h2><label>邮箱<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>密码<input type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} /></label><button className="primaryAction" disabled={busy}>{authMode === 'login' ? '进入控制台' : '注册并开始使用'}</button><button type="button" className="quietButton" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? '创建账号' : '返回登录'}</button>{message && <p className="message">{message}</p>}</form></main>;
 
-  return <main className="console"><aside className={"sidebar deviceDrawer " + (devicePanelOpen ? "open" : "")}><header><span className="wordmark">CARD INK</span><span className="submark">DEVICE CONSOLE</span></header><section><div className="drawerTitle"><p className="eyebrow">设备列表</p><button className="quietButton" onClick={() => setDevicePanelOpen(false)}>关闭</button></div><button type="button" className="addDeviceButton" onClick={() => setAddDeviceOpen(true)}>＋ 添加设备</button><div className="deviceList">{devices.map((device) => { const state = deviceState(device); return <div className={'deviceRow ' + (selectedDeviceId === device.deviceId ? 'active' : '')} key={device.deviceId}><button className="deviceChoice" onClick={() => selectDevice(device)}><span><i className={state.className}></i>{device.displayName || device.factoryName || device.deviceId}</span><small>{device.deviceId} · v{device.configVersion || 1}</small><small>{state.detail}</small></button><button className="renameButton" onClick={() => void renameDevice(device)}>改名</button></div>; })}{!devices.length && <p className="muted">还没有设备。</p>}</div>{addDeviceOpen && <div className="claimForm nearbyDevices"><div><b>同一网络下未绑定的设备</b><button type="button" className="quietButton" onClick={() => void discoverDevices()}>重新搜索</button></div><p className="muted">仅显示与当前网络相同、正在在线且尚未绑定账号的设备。</p>{discoverableDevices.map((device) => <div className="nearbyDevice" key={device.deviceId}><span><b>{device.factoryName || 'CARD INK'}</b><small>{device.deviceId} · {device.presence === 'online' ? '在线' : '沉睡中'}</small></span><button className="primaryAction" disabled={busy} onClick={() => void claimNearbyDevice(device)}>绑定</button></div>)}{!discoverableDevices.length && <p className="muted">暂未发现可绑定设备。请确认设备已完成 Wi-Fi 配置并刚刚联网。</p>}<button type="button" className="quietButton" onClick={() => setAddDeviceOpen(false)}>取消</button></div>}</section><footer><span>{account.email}</span><button className="quietButton" disabled={busy} onClick={() => void logout()}>退出</button></footer></aside><section className="workspace"><header className="topbar"><button className="deviceMenuButton" onClick={() => setDevicePanelOpen(true)}>设备列表 <span>{devices.length}</span></button><div className="currentDeviceTitle"><span className="eyebrow">当前设备</span><div><h1>{selectedDevice?.displayName || selectedDevice?.factoryName || '选择一台设备'}</h1>{selectedDevice && <button type="button" className="currentRenameButton" aria-label="重命名当前设备" title="重命名当前设备" onClick={() => void renameDevice(selectedDevice)}>✎</button>}</div></div>{selectedDevice && <span className="status lastUpdated">{lastUpdatedLabel(selectedDevice.lastSeen)}</span>}</header><div className="workGrid"><section className="previewPanel"><div className="panelHeading"><div><span className="eyebrow">实时预览</span><h2>设备画面 <small>{displayFor(selectedDevice).width} × {displayFor(selectedDevice).height}</small></h2></div></div>{selectedDevice ? <ProgramEditor program={program} card={previewCard} display={displayFor(selectedDevice)} onChange={setProgram} backgroundColor={backgroundColor} onBackgroundChange={setBackgroundColor} /> : <div className="emptyState">从左侧选择或添加一台设备。</div>}</section><aside className="selectionPanel"><section className="savePanel previewSave"><span className="eyebrow">当前选择</span><b>{selectedCard ? selectedCard.n : '尚未选择卡牌'}</b><small>{selectedCard ? ((selectedCard.s || '--') + ' · ' + (selectedCard.num || '--')) : '搜索并选择一张卡牌后保存。'}</small><button className="primaryAction" disabled={busy || !selectedDevice || !selectedCard} onClick={() => void saveCloudConfig()}>保存到云端</button><p>保存后，设备将在下次唤醒时更新。</p></section></aside><aside className="inspector"><section><span className="eyebrow">卡牌搜索</span><div className="marketSwitch"><button className={cardMarket === 'pokemon-us' ? 'selected' : ''} onClick={() => { setCardMarket('pokemon-us'); setCards([]); }}>美版</button><button className={cardMarket === 'pokemon-jp' ? 'selected' : ''} onClick={() => { setCardMarket('pokemon-jp'); setCards([]); }}>日版</button></div><div className="searchBox"><input value={q} onChange={(event) => setQ(event.target.value)} placeholder="卡名、系列或编号" onKeyDown={(event) => { if (event.key === 'Enter') void searchCards(); }} /><button onClick={() => void searchCards()}>搜索</button></div><div className="searchList">{pagedCards.map((card) => <button className={'cardRow ' + (selectedCard?.cardKey === card.cardKey ? 'active' : '')} key={card.cardKey} onClick={() => { setSelectedCard(card); setMessage('已选择 ' + card.n); }}><b>{card.n}</b><small>{card.s || '--'} · {card.num || '--'} · ${cardAmount(card) ?? '--'}</small></button>)}</div>{cards.length > PAGE_SIZE && <div className="pager"><button className="quietButton" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {pageCount}</span><button className="quietButton" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>下一页</button></div>}</section></aside><footer className="activity"><span className="activityDot"></span>{message || '拖动预览文字即可调整布局；没有模板选择，所有设备均使用当前自定义排版。'}</footer></div></section></main>;
+  return <main className="console"><aside className={"sidebar deviceDrawer " + (devicePanelOpen ? "open" : "")}><header><span className="wordmark">CARD INK</span><span className="submark">DEVICE CONSOLE</span></header><section><div className="drawerTitle"><p className="eyebrow">设备列表</p><button className="quietButton" onClick={() => setDevicePanelOpen(false)}>关闭</button></div><button type="button" className="addDeviceButton" onClick={() => setAddDeviceOpen(true)}>＋ 添加设备</button><div className="deviceList">{devices.map((device) => { const state = deviceState(device); return <div className={'deviceRow ' + (selectedDeviceId === device.deviceId ? 'active' : '')} key={device.deviceId}><button className="deviceChoice" onClick={() => selectDevice(device)}><span><i className={state.className}></i>{device.displayName || device.factoryName || device.deviceId}</span><small>{device.deviceId} · v{device.configVersion || 1}</small><small>{state.detail}</small></button><button className="renameButton" onClick={() => void renameDevice(device)}>改名</button></div>; })}{!devices.length && <p className="muted">还没有设备。</p>}</div>{addDeviceOpen && <div className="claimForm nearbyDevices"><div><b>同一网络下未绑定的设备</b><button type="button" className="quietButton" onClick={() => void discoverDevices()}>重新搜索</button></div><p className="muted">仅显示与当前网络相同、正在在线且尚未绑定账号的设备。</p>{discoverableDevices.map((device) => <div className="nearbyDevice" key={device.deviceId}><span><b>{device.factoryName || 'CARD INK'}</b><small>{device.deviceId} · {device.presence === 'online' ? '在线' : '沉睡中'}</small></span><button className="primaryAction" disabled={busy} onClick={() => void claimNearbyDevice(device)}>绑定</button></div>)}{!discoverableDevices.length && <p className="muted">暂未发现可绑定设备。请确认设备已完成 Wi-Fi 配置并刚刚联网。</p>}<button type="button" className="quietButton" onClick={() => setAddDeviceOpen(false)}>取消</button></div>}</section><footer><span>{account.email}</span><button className="quietButton" disabled={busy} onClick={() => void logout()}>退出</button></footer></aside><section className="workspace"><header className="topbar"><button className="deviceMenuButton" onClick={() => setDevicePanelOpen(true)}>设备列表 <span>{devices.length}</span></button><div className="currentDeviceTitle"><span className="eyebrow">当前设备</span><div><h1>{selectedDevice?.displayName || selectedDevice?.factoryName || '选择一台设备'}</h1>{selectedDevice && <button type="button" className="currentRenameButton" aria-label="重命名当前设备" title="重命名当前设备" onClick={() => void renameDevice(selectedDevice)}>✎</button>}</div></div>{selectedDevice && <span className="status lastUpdated">{lastUpdatedLabel(selectedDevice.lastSeen)}</span>}</header><div className="workGrid"><section className="previewPanel"><div className="panelHeading"><div><span className="eyebrow">实时预览</span><h2>设备画面 <small>{displayFor(selectedDevice).width} × {displayFor(selectedDevice).height}</small></h2></div></div>{selectedDevice ? <ProgramEditor program={program} card={previewCard} display={displayFor(selectedDevice)} onChange={setProgram} backgroundColor={backgroundColor} onBackgroundChange={setBackgroundColor} /> : <div className="emptyState">从左侧选择或添加一台设备。</div>}</section><aside className="selectionPanel"><section className="savePanel previewSave"><span className="eyebrow">当前选择</span><b>{selectedCard ? selectedCard.n : '尚未选择卡牌'}</b><small>{selectedCard ? ((selectedCard.s || '--') + ' · ' + (selectedCard.num || '--')) : '搜索并选择一张卡牌后保存。'}</small><button className="primaryAction" disabled={busy || !selectedDevice || !selectedCard} onClick={() => void saveCloudConfig()}>保存到云端</button><p>保存后，设备将在下次唤醒时更新。</p></section></aside><aside className="inspector"><section><span className="eyebrow">卡牌搜索</span><div className="marketSwitch"><button className={cardMarket === 'pokemon-us' ? 'selected' : ''} onClick={() => { setCardMarket('pokemon-us'); setCards([]); }}>美版</button><button className={cardMarket === 'pokemon-jp' ? 'selected' : ''} onClick={() => { setCardMarket('pokemon-jp'); setCards([]); }}>日版</button></div><div className="searchBox"><input value={q} onChange={(event) => setQ(event.target.value)} placeholder="卡名、系列或编号" onKeyDown={(event) => { if (event.key === 'Enter') void searchCards(); }} /><button onClick={() => void searchCards()}>搜索</button></div><div className="searchList">{pagedCards.map((card) => <button className={'cardRow ' + (selectedCard?.cardKey === card.cardKey ? 'active' : '')} key={card.cardKey} onClick={() => { setSelectedCard(card); setGraded(null); void fetchGraded(card.cardKey); setMessage('已选择 ' + card.n); }}><b>{card.n}</b><small>{card.s || '--'} · {card.num || '--'} · ${cardAmount(card) ?? '--'}</small></button>)}</div>{cards.length > PAGE_SIZE && <div className="pager"><button className="quietButton" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {pageCount}</span><button className="quietButton" disabled={page >= pageCount} onClick={() => setPage(page + 1)}>下一页</button></div>}</section></aside><footer className="activity"><span className="activityDot"></span>{message || '拖动预览文字即可调整布局；没有模板选择，所有设备均使用当前自定义排版。'}</footer></div></section></main>;
 }

@@ -11,6 +11,8 @@ export type CardSample = {
   mid: string;
   high: string;
   power: string;
+  // 评级卡价格：key 形如 "PSA:10"，值为美元价格
+  grades?: Record<string, number>;
 };
 
 export type RenderCommand = {
@@ -21,14 +23,15 @@ export type RenderCommand = {
   x: number;
   y: number;
   font: -1 | 0 | 1 | 2 | 3 | 4;
-  color: 0 | 1;
+  color: 0 | 1 | 2;
   wrap: boolean;
   visible: boolean;
 };
 
 // 位图静态层（Web canvas 渲染的黑/红双平面 1bpp）+ 动态槽位（固件本地画的字段）
 export type FrameSlots = { value: string; x: number; y: number; font: number; color: number }[];
-export type DeviceFrame = { blackB64: string; redB64: string; slots: FrameSlots };
+export type BackgroundColor = 'white' | 'black' | 'red';
+export type DeviceFrame = { blackB64: string; redB64: string; slots: FrameSlots; backgroundColor?: BackgroundColor };
 
 export type DeviceRecord = {
   deviceId: string;
