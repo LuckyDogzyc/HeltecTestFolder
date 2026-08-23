@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { normalizeTitle } from './templates';
 import type { CardSample } from './types';
@@ -36,7 +36,8 @@ export const MARKET_INDEX: Record<string, { filename: string; sourceId: string; 
 };
 
 const SEALED_RE = /\b(pack|booster|box|bundle|tin|case|collection|deck|binder|album|sleeves|poster|playmat|portfolio|file set|trainer box|battle academy|starter set|deck set|code card|jumbo)\b/iu;
-let cache: Record<string, IndexedCard[]> = {};
+// 索引缓存带 mtime：GitHub Action 每日更新 search_index 后，服务器按文件变化自动重读（无需重启）
+let cache: Record<string, { mtimeMs: number; cards: IndexedCard[] }> = {};
 
 export function norm(v: string) {
   return (v || '')
@@ -83,27 +84,34 @@ export function hasUsablePrice(card: CardRow) {
 }
 
 export function loadCards(market: string) {
-  if (cache[market]) return cache[market];
   const meta = MARKET_INDEX[market] || MARKET_INDEX['pokemon-us'];
   const path = join(process.cwd(), '..', 'cards', meta.filename);
-  const data = JSON.parse(readFileSync(path, 'utf8')) as { cards: CardRow[] };
-  cache[market] = (data.cards || []).filter(isSingleCard).map((card) => {
-    const hay = norm(card.q || [card.n, card.s || '', card.r || '', card.t || '', card.num || ''].join(' '));
-    const cardKey = encodeCardKey(meta.sourceId, card.id, card.t);
-    return {
-      ...card,
-      sourceId: meta.sourceId,
-      market,
-      cardKey,
-      variantKey: `${cardKey}`,
-      _hay: hay,
-      _name: norm(card.n || ''),
-      _set: norm(card.s || ''),
-      _num: norm(card.num || ''),
-      _tokens: new Set(tokens(hay)),
-    };
-  });
-  return cache[market];
+  try {
+    const stat = statSync(path);
+    if (cache[market] && cache[market].mtimeMs === stat.mtimeMs) return cache[market].cards;
+    const data = JSON.parse(readFileSync(path, 'utf8')) as { cards: CardRow[] };
+    const cards = (data.cards || []).filter(isSingleCard).map((card) => {
+      const hay = norm(card.q || [card.n, card.s || '', card.r || '', card.t || '', card.num || ''].join(' '));
+      const cardKey = encodeCardKey(meta.sourceId, card.id, card.t);
+      return {
+        ...card,
+        sourceId: meta.sourceId,
+        market,
+        cardKey,
+        variantKey: `${cardKey}`,
+        _hay: hay,
+        _name: norm(card.n || ''),
+        _set: norm(card.s || ''),
+        _num: norm(card.num || ''),
+        _tokens: new Set(tokens(hay)),
+      };
+    });
+    cache[market] = { mtimeMs: stat.mtimeMs, cards };
+    return cards;
+  } catch {
+    if (cache[market]) return cache[market].cards;
+    return [];
+  }
 }
 
 export function publicCard(card: IndexedCard) {
