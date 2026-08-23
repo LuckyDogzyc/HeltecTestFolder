@@ -1,19 +1,12 @@
 {
-  "description": "每日 GitHub Action 抓取 PSA 评级价的在用卡清单（设备实际显示的卡）。新增设备卡时在此追加。",
+  "description": "每日 GitHub Action 抓取 PSA 评级价的在用卡清单（由服务器从设备在用卡自动同步生成，请勿手改）。",
   "cards": [
     {
       "cardKey": "tcgcsv-pokemon-jp:602681:Holofoil",
       "name": "Umbreon ex",
-      "num": "217",
+      "num": "217/187",
       "set": "SV8a: Terastal Fest ex",
       "market": "pokemon-jp"
-    },
-    {
-      "cardKey": "tcgcsv-pokemon-us:502558:Holofoil",
-      "name": "Charizard ex",
-      "num": "006/165",
-      "set": "SV: Scarlet & Violet 151",
-      "market": "pokemon-us"
     }
   ]
 }
