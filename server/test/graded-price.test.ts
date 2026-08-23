@@ -45,10 +45,21 @@ test('page editor exposes grade element with company/score selects', () => {
   assert.match(page, /fetchGraded\(card\.cardKey\)/);
 });
 
-test('graded price API route uses PriceCharting with token', () => {
-  assert.match(route, /pricecharting\.com\/api\/products/);
-  assert.match(route, /PRICE_CHARTING_TOKEN/);
-  assert.match(route, /psa10/);
-  assert.match(route, /AbortSignal\.timeout\(10000\)/);
-  assert.match(route, /12 \* 60 \* 60 \* 1000/);
+test('graded price API route uses free PriceCharting page scraper', () => {
+  assert.match(route, /getGradedPrices/);
+  assert.match(route, /grades: result\.grades/);
+  assert.match(route, /CARD_NOT_FOUND/);
+  const lib = readFileSync(join(process.cwd(), 'lib/pricecharting.ts'), 'utf8');
+  assert.match(lib, /search-products\?type=prices/);
+  assert.match(lib, /id="price_data"/);
+  assert.match(lib, /24 \* 60 \* 60 \* 1000/);
+});
+
+test('device config route re-bakes graded frame on daily refresh', () => {
+  const configRoute = readFileSync(join(process.cwd(), 'app/api/devices/[id]/config/route.ts'), 'utf8');
+  assert.match(configRoute, /maybeRefreshGradedFrame/);
+  assert.match(configRoute, /\{grade:/);
+  assert.match(configRoute, /framePayload\(program, sample, bg\)/);
+  assert.match(configRoute, /saveDeviceConfig\(device\.deviceId/);
+  assert.match(configRoute, /getGradedPrices\(card\)/);
 });

@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { normalizeTitle } from './templates';
+import type { CardSample } from './types';
 
 export type CardRow = {
   id: number;
@@ -115,6 +117,26 @@ export function findCardByKey(cardKey: string) {
   const market = marketForSource(parsed.sourceId);
   if (!market) return null;
   return loadCards(market).find((card) => card.id === parsed.productId && (card.t || 'default') === parsed.variant) || null;
+}
+
+// 服务端重建 CardSample（与客户端 toPreviewCard 语义一致），用于每日刷新时重新烘焙位图
+export function cardSampleFromCard(card: IndexedCard, grades?: Record<string, number>): CardSample {
+  const price = typeof card.m === 'number' ? card.m : typeof card.l === 'number' ? card.l : undefined;
+  return {
+    cardKey: card.cardKey,
+    productId: card.id,
+    title: normalizeTitle(card.n || ''),
+    name: card.n || '',
+    set: card.s || '',
+    rarity: card.r || '',
+    subType: card.t || '',
+    market: price !== undefined ? String(price) : '--',
+    low: typeof card.l === 'number' ? String(card.l) : '--',
+    mid: typeof card.mid === 'number' ? String(card.mid) : '--',
+    high: typeof card.h === 'number' ? String(card.h) : '--',
+    power: '100%',
+    grades,
+  };
 }
 
 export function priceLabel(card: CardRow, currency = 'USD') {
