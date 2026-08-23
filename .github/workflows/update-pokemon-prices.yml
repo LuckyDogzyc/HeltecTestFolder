@@ -26,11 +26,16 @@ jobs:
         run: |
           python update_card_sources.py --sleep 0.2
 
+      - name: Fetch PSA graded prices for in-use cards
+        run: |
+          # 抓 cards/graded_watchlist.json 清单内卡片的 PSA 评级价（公开页，无需 token）
+          python fetch_graded_prices.py --sleep 1 || echo "graded fetch had failures — partial results still committed"
+
       - name: Commit and push updated data files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add cards update_card_sources.py download_pokemon_tcgcsv_json.py generate_epaper_cards_json.py generate_product_id_buckets.py generate_search_index.py
+          git add cards update_card_sources.py download_pokemon_tcgcsv_json.py generate_epaper_cards_json.py generate_product_id_buckets.py generate_search_index.py fetch_graded_prices.py
           if git diff --cached --quiet; then
             echo "No changes detected."
           else

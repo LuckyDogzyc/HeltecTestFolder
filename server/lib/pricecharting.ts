@@ -1,8 +1,11 @@
 import { norm, tokens } from './cardCatalog';
 import type { IndexedCard } from './cardCatalog';
+import { readFileSync, statSync } from 'fs';
+import { join } from 'path';
 
 // 免费 PriceCharting 数据源：抓公开产品页的 #price_data 价格表（列：Ungraded / Grade 7 / Grade 8 / Grade 9 / Grade 9.5 / PSA 10）。
 // 无需 API token / 订阅。参考 https://github.com/TomasPereiraa/Pokemon-Card-Tracking 的抓取思路（本实现用普通 HTTP，不依赖浏览器）。
+// 数据优先读本地 cards/graded_prices.json（GitHub Action 每日生成），清单外的卡才走 HTTP 兜底。
 
 const SEARCH_URL = 'https://www.pricecharting.com/search-products?type=prices&q=';
 const UA =
@@ -13,6 +16,26 @@ export type GradePrices = Record<string, number>; // key 形如 'PSA:10'
 
 const cache = new Map<string, { grades: GradePrices | null; fetchedAt: number }>();
 
+const LOCAL_PATH = join(process.cwd(), '..', 'cards', 'graded_prices.json');
+let localCache: { mtimeMs: number; data: { prices?: Record<string, GradePrices> } | null } | null = null;
+
+// 读取 GitHub Action 每日生成的本地评级价（按文件 mtime 增量重读）
+export function readLocalGradedPrices(path = LOCAL_PATH): { prices?: Record<string, GradePrices> } | null {
+  try {
+    const stat = statSync(path);
+    if (localCache && localCache.mtimeMs === stat.mtimeMs) return localCache.data;
+    const data = JSON.parse(readFileSync(path, 'utf8')) as { prices?: Record<string, GradePrices> };
+    localCache = { mtimeMs: stat.mtimeMs, data };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLocalGradedPricesCache() {
+  localCache = null;
+}
+
 // 公开页面的通用评级列 → 我们 UI 的 公司:分数 key（BGS/CGC 不在公开页上，暂无数据）
 const TABLE_TO_GRADE_KEY: Record<string, string> = {
   'PSA 10': 'PSA:10',
@@ -22,7 +45,7 @@ const TABLE_TO_GRADE_KEY: Record<string, string> = {
 };
 
 export type GradedResult =
-  | { ok: true; grades: GradePrices | null; matched?: string; refreshed: boolean }
+  | { ok: true; grades: GradePrices | null; matched?: string; refreshed: boolean; source?: 'local' | 'http' }
   | { ok: false; reason: 'upstream' | 'blocked' | 'not_found' };
 
 function httpGet(url: string, signal?: AbortSignal): Promise<Response> {
@@ -99,7 +122,8 @@ export async function fetchProductPrices(href: string): Promise<Record<string, n
 function matchScore(hit: PcSearchHit, card: IndexedCard): number {
   const title = norm(hit.title);
   const base = norm((card.n || '').split(' - ')[0]);
-  const num = norm((card.num || '').split('/')[0]);
+  // PC 标题编号不带前导零（#6 vs 006），匹配时去掉
+  const num = norm((card.num || '').split('/')[0]).replace(/^0+/, '');
   const slug = norm(hit.href);
   let score = 0;
   if (base && title.includes(base)) score += 400;
@@ -121,6 +145,11 @@ export async function getGradedPrices(
   card: IndexedCard,
   opts?: { force?: boolean }
 ): Promise<GradedResult> {
+  // 本地每日数据优先（GitHub Action 生成）；命中即不发起任何 HTTP 请求
+  const localGrades = readLocalGradedPrices()?.prices?.[card.cardKey];
+  if (localGrades && Object.keys(localGrades).length) {
+    return { ok: true, grades: localGrades, matched: 'local', refreshed: true, source: 'local' };
+  }
   const cached = cache.get(card.cardKey);
   if (cached && !opts?.force && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return { ok: true, grades: cached.grades, refreshed: false };
