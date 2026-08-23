@@ -64,7 +64,7 @@ function EpaperPreview({ program, card, display, editable, onChange, backgroundC
     const frame = frameRef.current;
     if (!frame) return;
     function updateScale() {
-      const width = frame?.clientWidth || deviceWidth;
+      const width = frame ? Math.max(deviceWidth * 0.45, frame.clientWidth - 20) : deviceWidth;
       const nextScale = Math.max(0.45, Math.min(2, Math.floor((width / deviceWidth) * 100) / 100));
       setScale(nextScale);
     }
