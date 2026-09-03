@@ -1,1 +1,1 @@
-{"schemaVersion":1,"bucketCount":256,"totalRows":79831,"nonEmptyBuckets":256,"maxRowsPerBucket":346,"bucketRule":"productId % bucketCount","fileName":"%03d.csv"}
+{"schemaVersion":1,"bucketCount":256,"totalRows":79847,"nonEmptyBuckets":256,"maxRowsPerBucket":346,"bucketRule":"productId % bucketCount","fileName":"%03d.csv"}
