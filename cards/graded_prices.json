@@ -1,4 +1,11 @@
 {
-  "updatedAt": "2026-10-13T09:57:23Z",
-  "prices": {}
+  "updatedAt": "2026-10-14T08:16:03Z",
+  "prices": {
+    "tcgcsv-pokemon-jp:602681:Holofoil": {
+      "PSA:10": 509.94,
+      "PSA:9": 382.0,
+      "PSA:8": 347.0,
+      "PSA:7": 278.0
+    }
+  }
 }
