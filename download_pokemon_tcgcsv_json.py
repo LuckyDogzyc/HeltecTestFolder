@@ -67,12 +67,21 @@ def get_json(url: str, session: requests.Session, sleep: float = 0.0) -> Dict:
     Raises:
         requests.RequestException if the request fails or JSON is invalid.
     """
-    resp = session.get(url)
-    resp.raise_for_status()
-    data = resp.json()
-    if sleep > 0:
-        time.sleep(sleep)
-    return data
+    last_error: requests.RequestException | None = None
+    for attempt in range(3):
+        try:
+            resp = session.get(url, timeout=(5, 30))
+            resp.raise_for_status()
+            data = resp.json()
+            if sleep > 0:
+                time.sleep(sleep)
+            return data
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def fetch_groups(category_id: int, session: requests.Session, sleep: float = 0.0) -> List[Dict]:
